@@ -24,36 +24,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const fetchRole = useCallback(async (userId: string): Promise<string | null> => {
-    try {
-      // Try RPC first (bypasses RLS via SECURITY DEFINER)
-      const { data: rpcData, error: rpcError } = await supabase
-        .rpc('admin_get_my_role');
+    console.log('[Auth] Fetching role for user:', userId);
 
+    // Method 1: Try RPC (SECURITY DEFINER — bypasses RLS)
+    try {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('admin_get_my_role');
       if (!rpcError && rpcData) {
-        console.log('Role fetched via RPC:', rpcData);
+        console.log('[Auth] Role via RPC:', rpcData);
         return rpcData as string;
       }
+      if (rpcError) console.warn('[Auth] RPC failed:', rpcError.message, rpcError.code);
+    } catch (err) {
+      console.warn('[Auth] RPC exception:', err);
+    }
 
-      if (rpcError) {
-        console.warn('RPC role fetch failed, trying direct query:', rpcError.message);
-      }
-
-      // Fallback: direct table query (works if RLS allows it)
+    // Method 2: Direct query (needs RLS policy for own role)
+    try {
       const { data, error } = await supabase
         .from('user_roles')
         .select('role')
         .eq('user_id', userId)
         .single();
-      if (error) {
-        console.warn('Direct role fetch error:', error.message);
-        return null;
+      if (!error && data?.role) {
+        console.log('[Auth] Role via direct query:', data.role);
+        return data.role;
       }
-      console.log('Role fetched via direct query:', data?.role);
-      return data?.role ?? null;
+      if (error) console.warn('[Auth] Direct query failed:', error.message, error.code);
     } catch (err) {
-      console.warn('Role fetch exception:', err);
-      return null;
+      console.warn('[Auth] Direct query exception:', err);
     }
+
+    console.warn('[Auth] No role found for user:', userId);
+    return null;
   }, []);
 
   useEffect(() => {
@@ -64,54 +66,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let isMounted = true;
 
+    // Just get the existing session — do NOT manually parse hash tokens.
+    // Supabase JS client handles the OAuth callback hash automatically
+    // via onAuthStateChange. Manual setSession causes lock conflicts.
     async function initAuth() {
       try {
-        // Check if we have hash tokens in URL (OAuth callback)
-        const hashParams = new URLSearchParams(window.location.hash.substring(1));
-        const accessToken = hashParams.get('access_token');
-        const refreshToken = hashParams.get('refresh_token');
-
-        // If we have tokens in hash, set the session manually
-        if (accessToken && refreshToken) {
-          const { data, error } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
-
-          if (!error && data.session?.user && isMounted) {
-            setUser(data.session.user);
-            const r = await fetchRole(data.session.user.id);
-            setRole(r);
-            // Clean the URL hash
-            window.history.replaceState(null, '', window.location.pathname);
-            setLoading(false);
-            return;
-          }
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) {
+          console.error('[Auth] getSession error:', error.message);
         }
 
-        // Normal session check
-        const { data: { session } } = await supabase.auth.getSession();
-        if (isMounted) {
-          const u = session?.user ?? null;
-          setUser(u);
-          if (u) {
-            const r = await fetchRole(u.id);
-            setRole(r);
-          }
-          setLoading(false);
+        if (!isMounted) return;
+
+        const u = session?.user ?? null;
+        console.log('[Auth] Init session:', u ? u.email : 'none');
+        setUser(u);
+
+        if (u) {
+          const r = await fetchRole(u.id);
+          if (isMounted) setRole(r);
         }
+
+        if (isMounted) setLoading(false);
       } catch (err) {
-        console.error('Auth init error:', err);
+        console.error('[Auth] Init error:', err);
         if (isMounted) setLoading(false);
       }
     }
 
     initAuth();
 
-    // Listen for auth changes (token refresh, sign out)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!isMounted) return;
+        console.log('[Auth] State change:', event, session?.user?.email);
 
         const u = session?.user ?? null;
         setUser(u);
@@ -136,9 +124,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchRole]);
 
   const signInWithGoogle = async () => {
-    // Explicitly redirect to this web app, not the mobile app deep links
     const redirectUrl = window.location.origin;
-    console.log('OAuth redirectTo:', redirectUrl);
+    console.log('[Auth] OAuth redirectTo:', redirectUrl);
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -148,7 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     if (error) {
-      console.error('OAuth error:', error.message);
+      console.error('[Auth] OAuth error:', error.message);
     }
   };
 

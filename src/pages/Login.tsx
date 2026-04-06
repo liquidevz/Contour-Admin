@@ -2,9 +2,11 @@ import { useAuth } from '../context/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { Shield } from 'lucide-react';
 import { isConfigured } from '../lib/supabase';
+import { useState } from 'react';
 
 export default function Login() {
-  const { user, role, loading, signInWithGoogle } = useAuth();
+  const { user, role, loading, signInWithGoogle, signOut } = useAuth();
+  const [showDebug, setShowDebug] = useState(false);
 
   if (!isConfigured) {
     return (
@@ -55,6 +57,54 @@ export default function Login() {
             <strong>Access Denied</strong><br />
             Your account ({user.email}) does not have admin privileges.
             Contact a superadmin to get access.
+            <br /><br />
+            <button
+              onClick={signOut}
+              style={{
+                background: 'rgba(255,255,255,0.1)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                color: 'inherit',
+                padding: '8px 16px',
+                borderRadius: 8,
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+              }}
+            >
+              Sign out & try another account
+            </button>
+            <br />
+            <button
+              onClick={() => setShowDebug(!showDebug)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-muted, #888)',
+                cursor: 'pointer',
+                fontSize: '0.72rem',
+                marginTop: 12,
+                textDecoration: 'underline',
+              }}
+            >
+              {showDebug ? 'Hide' : 'Show'} debug info
+            </button>
+            {showDebug && (
+              <div style={{
+                marginTop: 12,
+                padding: 12,
+                background: 'rgba(0,0,0,0.3)',
+                borderRadius: 8,
+                fontSize: '0.72rem',
+                fontFamily: 'monospace',
+                textAlign: 'left',
+                wordBreak: 'break-all',
+              }}>
+                <div><strong>User ID:</strong> {user.id}</div>
+                <div><strong>Email:</strong> {user.email}</div>
+                <div><strong>Role:</strong> {role ?? 'null (not found)'}</div>
+                <div><strong>Origin:</strong> {window.location.origin}</div>
+                <div><strong>Configured:</strong> {String(isConfigured)}</div>
+              </div>
+            )}
           </div>
         ) : (
           <button className="google-btn" onClick={signInWithGoogle}>
