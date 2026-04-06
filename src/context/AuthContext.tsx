@@ -25,15 +25,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchRole = useCallback(async (userId: string): Promise<string | null> => {
     try {
+      // Try RPC first (bypasses RLS via SECURITY DEFINER)
+      const { data: rpcData, error: rpcError } = await supabase
+        .rpc('admin_get_my_role');
+
+      if (!rpcError && rpcData) {
+        console.log('Role fetched via RPC:', rpcData);
+        return rpcData as string;
+      }
+
+      if (rpcError) {
+        console.warn('RPC role fetch failed, trying direct query:', rpcError.message);
+      }
+
+      // Fallback: direct table query (works if RLS allows it)
       const { data, error } = await supabase
         .from('user_roles')
         .select('role')
         .eq('user_id', userId)
         .single();
       if (error) {
-        console.warn('Role fetch error:', error.message);
+        console.warn('Direct role fetch error:', error.message);
         return null;
       }
+      console.log('Role fetched via direct query:', data?.role);
       return data?.role ?? null;
     } catch (err) {
       console.warn('Role fetch exception:', err);

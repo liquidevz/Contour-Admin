@@ -356,7 +356,44 @@ FROM admin_audit_logs aal
 LEFT JOIN profiles p ON p.id = aal.admin_id;
 
 
+-- ────────────────────────────────────────────────────────────
+-- Migration 15: Self-Role Lookup (CRITICAL for admin panel auth)
+-- Without this, users cannot discover their own role via the
+-- Supabase client because user_roles RLS only allows superadmin.
+-- ────────────────────────────────────────────────────────────
+
+-- 15a: RPC to get current user's own role (bypasses RLS)
+CREATE OR REPLACE FUNCTION public.admin_get_my_role()
+RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = 'public'
+AS $$
+DECLARE
+  _role text;
+BEGIN
+  SELECT role INTO _role
+  FROM user_roles
+  WHERE user_id = auth.uid();
+  RETURN _role;
+END;
+$$;
+
+-- 15b: Allow users to read their OWN role via direct query (fallback)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE policyname = 'users_read_own_role'
+      AND tablename = 'user_roles'
+  ) THEN
+    EXECUTE 'CREATE POLICY "users_read_own_role" ON public.user_roles
+      FOR SELECT USING (user_id = auth.uid())';
+  END IF;
+END;
+$$;
+
+
 -- ============================================================
--- ✅ ALL 14 MIGRATIONS COMPLETE
+-- ✅ ALL 15 MIGRATIONS COMPLETE
 -- Run on your self-hosted Supabase SQL editor or via psql
 -- ============================================================
