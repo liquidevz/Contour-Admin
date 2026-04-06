@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { BarChart3, AlertTriangle, Activity, Search as SearchIcon, TrendingUp } from 'lucide-react';
+import { AlertTriangle, Activity, Search as SearchIcon, TrendingUp } from 'lucide-react';
 
 export default function Analytics() {
   const [activeTab, setActiveTab] = useState<'events' | 'errors' | 'performance' | 'search'>('events');
