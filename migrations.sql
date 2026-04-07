@@ -216,11 +216,11 @@ CREATE POLICY "admins_manage_subcategories" ON public.marketplace_subcategories
   FOR ALL USING (get_user_role(auth.uid()) IN ('admin', 'superadmin'))
   WITH CHECK (get_user_role(auth.uid()) IN ('admin', 'superadmin'));
 
-CREATE POLICY "admins_manage_marketplace_tags" ON public.marketplace_tags
+CREATE POLICY "admins_manage_category_intents" ON public.marketplace_category_intents
   FOR ALL USING (get_user_role(auth.uid()) IN ('admin', 'superadmin'))
   WITH CHECK (get_user_role(auth.uid()) IN ('admin', 'superadmin'));
 
-CREATE POLICY "admins_manage_category_intents" ON public.marketplace_category_intents
+CREATE POLICY "admins_manage_marketplace_tags" ON public.marketplace_tags
   FOR ALL USING (get_user_role(auth.uid()) IN ('admin', 'superadmin'))
   WITH CHECK (get_user_role(auth.uid()) IN ('admin', 'superadmin'));
 
@@ -393,7 +393,23 @@ END;
 $$;
 
 
+-- ────────────────────────────────────────────────────────────
+-- Migration 16: Re-link intents to subcategories
+-- Previously marketplace_category_intents had category_id.
+-- Now we add subcategory_id so intents belong to subcategories.
+-- Hierarchy: categories → subcategories → intents
+-- ────────────────────────────────────────────────────────────
+
+-- 16a: Add subcategory_id column to marketplace_category_intents
+ALTER TABLE public.marketplace_category_intents
+  ADD COLUMN IF NOT EXISTS subcategory_id uuid REFERENCES public.marketplace_subcategories(id) ON DELETE CASCADE;
+
+-- 16b: Drop the old category_id column (intents no longer link to categories directly)
+ALTER TABLE public.marketplace_category_intents
+  DROP COLUMN IF EXISTS category_id;
+
+
 -- ============================================================
--- ✅ ALL 15 MIGRATIONS COMPLETE
+-- ✅ ALL 16 MIGRATIONS COMPLETE
 -- Run on your self-hosted Supabase SQL editor or via psql
 -- ============================================================

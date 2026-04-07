@@ -1,21 +1,22 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Plus, Trash2, Edit2, X, ChevronRight, Layers } from 'lucide-react';
+import { Plus, Trash2, Edit2, X, ChevronRight, ChevronDown, Layers } from 'lucide-react';
 
 export default function Categories() {
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
+  const [expandedSubs, setExpandedSubs] = useState<Set<string>>(new Set());
   const [showModal, setShowModal] = useState<null | 'category' | 'subcategory' | 'intent'>(null);
   const [modalParentId, setModalParentId] = useState<string>('');
   const [modalValue, setModalValue] = useState('');
-  const [editing, setEditing] = useState<{ id: string; table: string; value: string } | null>(null);
+  const [editing, setEditing] = useState<{ id: string; table: string; value: string; field: string } | null>(null);
 
   useEffect(() => { loadCategories(); }, []);
 
   async function loadCategories() {
     const { data } = await supabase.from('marketplace_categories')
-      .select('*, marketplace_subcategories(*), marketplace_category_intents(*)')
+      .select('*, marketplace_subcategories(*, marketplace_category_intents(*))')
       .order('name');
     setCategories(data || []);
     setLoading(false);
@@ -27,11 +28,14 @@ export default function Categories() {
       await supabase.from('marketplace_categories').insert({ name: modalValue.trim() });
     } else if (showModal === 'subcategory') {
       await supabase.from('marketplace_subcategories').insert({
-        category_id: modalParentId, name: modalValue.trim(), normalized_name: modalValue.trim().toLowerCase().replace(/\s+/g, '_')
+        category_id: modalParentId,
+        name: modalValue.trim(),
+        normalized_name: modalValue.trim().toLowerCase().replace(/\s+/g, '_'),
       });
     } else if (showModal === 'intent') {
       await supabase.from('marketplace_category_intents').insert({
-        category_id: modalParentId, intent: modalValue.trim()
+        subcategory_id: modalParentId,
+        intent: modalValue.trim(),
       });
     }
     setShowModal(null);
@@ -47,19 +51,30 @@ export default function Categories() {
 
   async function saveEdit() {
     if (!editing) return;
-    const field = editing.table === 'marketplace_category_intents' ? 'intent' : 'name';
-    await supabase.from(editing.table).update({ [field]: editing.value }).eq('id', editing.id);
+    await supabase.from(editing.table).update({ [editing.field]: editing.value }).eq('id', editing.id);
     setEditing(null);
     loadCategories();
   }
 
-  const toggleExpand = (id: string) => {
-    setExpanded(prev => {
+  const toggleCat = (id: string) => {
+    setExpandedCats(prev => {
       const n = new Set(prev);
       if (n.has(id)) n.delete(id); else n.add(id);
       return n;
     });
   };
+
+  const toggleSub = (id: string) => {
+    setExpandedSubs(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  };
+
+  const modalTitle = showModal === 'intent' ? 'Intent' : showModal === 'subcategory' ? 'Subcategory' : 'Category';
+  const modalLabel = showModal === 'intent' ? 'Intent' : 'Name';
+  const modalPlaceholder = showModal === 'intent' ? 'e.g. Find a developer...' : showModal === 'subcategory' ? 'e.g. Web Development' : 'Enter name...';
 
   if (loading) return <div className="loading-state"><div className="spinner" /></div>;
 
@@ -82,17 +97,17 @@ export default function Categories() {
         <div className="modal-overlay" onClick={() => { setShowModal(null); setEditing(null); }}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>{editing ? 'Edit' : 'Create'} {showModal || 'Item'}</h2>
+              <h2>{editing ? 'Edit' : 'Create'} {editing ? 'Item' : modalTitle}</h2>
               <button className="btn btn-ghost btn-icon" onClick={() => { setShowModal(null); setEditing(null); }}><X size={18} /></button>
             </div>
             <div className="modal-body">
               <div className="form-group">
-                <label className="form-label">{showModal === 'intent' ? 'Intent' : 'Name'}</label>
+                <label className="form-label">{editing ? 'Value' : modalLabel}</label>
                 <input
                   className="input-field"
                   value={editing ? editing.value : modalValue}
                   onChange={e => editing ? setEditing({ ...editing, value: e.target.value }) : setModalValue(e.target.value)}
-                  placeholder={showModal === 'intent' ? 'e.g. Find a developer...' : 'Enter name...'}
+                  placeholder={editing ? 'Enter value...' : modalPlaceholder}
                   autoFocus
                 />
               </div>
@@ -117,78 +132,118 @@ export default function Categories() {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {categories.map(cat => (
-            <div key={cat.id} className="data-card">
-              <div className="data-card-header" style={{ cursor: 'pointer' }} onClick={() => toggleExpand(cat.id)}>
-                <div className="flex-center gap-sm">
-                  <ChevronRight size={16} style={{ transform: expanded.has(cat.id) ? 'rotate(90deg)' : 'none', transition: 'var(--transition-fast)', color: 'var(--text-muted)' }} />
-                  <span className="data-card-title">{cat.name}</span>
-                  <span className="data-card-count">{cat.marketplace_subcategories?.length || 0} subs</span>
-                  <span className="data-card-count">{cat.marketplace_category_intents?.length || 0} intents</span>
-                </div>
-                <div className="btn-group" onClick={e => e.stopPropagation()}>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setEditing({ id: cat.id, table: 'marketplace_categories', value: cat.name })}>
-                    <Edit2 size={13} />
-                  </button>
-                  <button className="btn btn-danger btn-sm" onClick={() => deleteItem('marketplace_categories', cat.id)}>
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              </div>
+          {categories.map(cat => {
+            const totalSubs = cat.marketplace_subcategories?.length || 0;
+            const totalIntents = cat.marketplace_subcategories?.reduce(
+              (sum: number, sub: any) => sum + (sub.marketplace_category_intents?.length || 0), 0
+            ) || 0;
 
-              {expanded.has(cat.id) && (
-                <div style={{ padding: '0 22px 18px' }}>
-                  {/* Subcategories */}
-                  <div style={{ marginBottom: 16 }}>
+            return (
+              <div key={cat.id} className="data-card">
+                {/* Category Header */}
+                <div className="data-card-header" style={{ cursor: 'pointer' }} onClick={() => toggleCat(cat.id)}>
+                  <div className="flex-center gap-sm">
+                    <ChevronRight size={16} style={{ transform: expandedCats.has(cat.id) ? 'rotate(90deg)' : 'none', transition: 'var(--transition-fast)', color: 'var(--text-muted)' }} />
+                    <span className="data-card-title">{cat.name}</span>
+                    <span className="data-card-count">{totalSubs} subs</span>
+                    <span className="data-card-count">{totalIntents} intents</span>
+                  </div>
+                  <div className="btn-group" onClick={e => e.stopPropagation()}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setEditing({ id: cat.id, table: 'marketplace_categories', value: cat.name, field: 'name' })}>
+                      <Edit2 size={13} />
+                    </button>
+                    <button className="btn btn-danger btn-sm" onClick={() => deleteItem('marketplace_categories', cat.id)}>
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Expanded: Subcategories */}
+                {expandedCats.has(cat.id) && (
+                  <div style={{ padding: '0 22px 18px' }}>
                     <div className="flex-center gap-sm mb-md" style={{ justifyContent: 'space-between' }}>
                       <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Subcategories</span>
                       <button className="btn btn-ghost btn-sm" onClick={() => { setShowModal('subcategory'); setModalParentId(cat.id); }}>
-                        <Plus size={13} /> Add
+                        <Plus size={13} /> Add Subcategory
                       </button>
                     </div>
-                    {cat.marketplace_subcategories?.length > 0 ? (
-                      <div className="tags-row">
-                        {cat.marketplace_subcategories.map((sub: any) => (
-                          <span key={sub.id} className="tag-chip">
-                            {sub.name}
-                            <button className="tag-chip-remove" onClick={() => deleteItem('marketplace_subcategories', sub.id)}>
-                              <X size={12} />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>No subcategories</span>
-                    )}
-                  </div>
 
-                  {/* Intents */}
-                  <div>
-                    <div className="flex-center gap-sm mb-md" style={{ justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Intents</span>
-                      <button className="btn btn-ghost btn-sm" onClick={() => { setShowModal('intent'); setModalParentId(cat.id); }}>
-                        <Plus size={13} /> Add
-                      </button>
-                    </div>
-                    {cat.marketplace_category_intents?.length > 0 ? (
-                      <div className="tags-row">
-                        {cat.marketplace_category_intents.map((intent: any) => (
-                          <span key={intent.id} className="tag-chip">
-                            {intent.intent}
-                            <button className="tag-chip-remove" onClick={() => deleteItem('marketplace_category_intents', intent.id)}>
-                              <X size={12} />
-                            </button>
-                          </span>
-                        ))}
+                    {totalSubs > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {cat.marketplace_subcategories.map((sub: any) => {
+                          const intentCount = sub.marketplace_category_intents?.length || 0;
+                          const isSubExpanded = expandedSubs.has(sub.id);
+
+                          return (
+                            <div key={sub.id} style={{
+                              border: '1px solid var(--border-color)',
+                              borderRadius: 8,
+                              background: 'var(--bg-secondary)',
+                              overflow: 'hidden',
+                            }}>
+                              {/* Subcategory Header */}
+                              <div
+                                style={{
+                                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                  padding: '10px 14px', cursor: 'pointer',
+                                }}
+                                onClick={() => toggleSub(sub.id)}
+                              >
+                                <div className="flex-center gap-sm">
+                                  {isSubExpanded
+                                    ? <ChevronDown size={14} style={{ color: 'var(--text-muted)' }} />
+                                    : <ChevronRight size={14} style={{ color: 'var(--text-muted)' }} />
+                                  }
+                                  <span style={{ fontWeight: 550, fontSize: '0.88rem', color: 'var(--text-primary)' }}>{sub.name}</span>
+                                  <span className="data-card-count">{intentCount} intents</span>
+                                </div>
+                                <div className="btn-group" onClick={e => e.stopPropagation()}>
+                                  <button className="btn btn-ghost btn-sm" onClick={() => setEditing({ id: sub.id, table: 'marketplace_subcategories', value: sub.name, field: 'name' })}>
+                                    <Edit2 size={12} />
+                                  </button>
+                                  <button className="btn btn-danger btn-sm" onClick={() => deleteItem('marketplace_subcategories', sub.id)}>
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Intents under this subcategory */}
+                              {isSubExpanded && (
+                                <div style={{ padding: '0 14px 12px', borderTop: '1px solid var(--border-color)' }}>
+                                  <div className="flex-center gap-sm" style={{ justifyContent: 'space-between', padding: '10px 0 8px' }}>
+                                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Intents</span>
+                                    <button className="btn btn-ghost btn-sm" onClick={() => { setShowModal('intent'); setModalParentId(sub.id); }}>
+                                      <Plus size={12} /> Add
+                                    </button>
+                                  </div>
+                                  {intentCount > 0 ? (
+                                    <div className="tags-row">
+                                      {sub.marketplace_category_intents.map((intent: any) => (
+                                        <span key={intent.id} className="tag-chip">
+                                          {intent.intent}
+                                          <button className="tag-chip-remove" onClick={() => deleteItem('marketplace_category_intents', intent.id)}>
+                                            <X size={12} />
+                                          </button>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>No intents yet — add one above</span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     ) : (
-                      <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>No intents</span>
+                      <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>No subcategories yet</span>
                     )}
                   </div>
-                </div>
-              )}
-            </div>
-          ))}
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
