@@ -28,13 +28,14 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg-primary, #0a0a0f)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg-primary, #0a0a0f)', gap: 16 }}>
         <div className="spinner" />
+        <p style={{ color: 'var(--text-muted, #5a5a6e)', fontSize: '0.85rem' }}>Loading dashboard…</p>
       </div>
     );
   }
 
-  if (!user || !role || !['admin', 'superadmin'].includes(role)) {
+  if (!user || !role || !['admin', 'superadmin', 'analyst'].includes(role)) {
     return <Navigate to="/login" replace />;
   }
 
