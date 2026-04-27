@@ -63,7 +63,8 @@ export default function App() {
                 </ProtectedRoute>
               }
             >
-              <Route index element={<PageWrapper><Dashboard /></PageWrapper>} />
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route path="dashboard" element={<PageWrapper><Dashboard /></PageWrapper>} />
               <Route path="waitlist" element={<PageWrapper><Waitlist /></PageWrapper>} />
               <Route path="users" element={<PageWrapper><Users /></PageWrapper>} />
               <Route path="users/:id" element={<PageWrapper><UserDetail /></PageWrapper>} />

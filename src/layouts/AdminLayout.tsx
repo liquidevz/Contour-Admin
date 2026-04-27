@@ -11,7 +11,7 @@ const navSections = [
   {
     label: 'Overview',
     items: [
-      { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     ]
   },
   {
@@ -126,7 +126,7 @@ export default function AdminLayout() {
                     <NavLink
                       key={item.to}
                       to={item.to}
-                      end={item.to === '/'}
+                      end={item.to === '/dashboard'}
                       className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
                       onClick={() => setSidebarOpen(false)}
                     >

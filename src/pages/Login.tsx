@@ -48,7 +48,7 @@ export default function Login() {
 
   // Logged in with a valid admin role → go to dashboard
   if (user && role && ['admin', 'superadmin', 'analyst'].includes(role)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   // Logged in but no admin role
