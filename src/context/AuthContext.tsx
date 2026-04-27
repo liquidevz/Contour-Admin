@@ -52,8 +52,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     addLog(`Fetching role for user ${userId.substring(0, 8)}...`);
 
-    let lastError = null;
-    
     // Attempt 1: RPC with Retry
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
@@ -63,7 +61,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         if (response.error) {
           addLog(`RPC Attempt ${attempt} error: ${response.error.message}`);
-          lastError = response.error;
         } else if (response.data) {
           addLog(`Role found via RPC: ${response.data}`);
           roleCache.set(userId, { role: response.data as string, ts: Date.now() });
@@ -73,7 +70,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (err: any) {
         addLog(`RPC Attempt ${attempt} exception: ${err.message}`);
-        lastError = err;
       }
       if (attempt < 2) await new Promise(r => setTimeout(r, 500));
     }
@@ -89,7 +85,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         if (qErr) {
           addLog(`Query Attempt ${attempt} error: ${qErr.message}`);
-          lastError = qErr;
         } else if (data?.role) {
           addLog(`Role found via Query: ${data.role}`);
           roleCache.set(userId, { role: data.role, ts: Date.now() });
@@ -99,7 +94,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (err: any) {
         addLog(`Query Attempt ${attempt} exception: ${err.message}`);
-        lastError = err;
       }
       if (attempt < 2) await new Promise(r => setTimeout(r, 500));
     }
