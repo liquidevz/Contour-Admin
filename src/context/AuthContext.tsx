@@ -7,18 +7,13 @@ interface AuthState {
   role: string | null;
   loading: boolean;
   error: string | null;
-  signInWithGoogle: () => Promise<void>;
+  debugLog: string[];
+  signInWithEmail: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
+  refreshRole: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthState>({
-  user: null,
-  role: null,
-  loading: true,
-  error: null,
-  signInWithGoogle: async () => {},
-  signOut: async () => {},
-});
+const AuthContext = createContext<AuthState | null>(null);
 
 // Simple in-memory role cache to avoid re-fetching on every auth event
 const roleCache = new Map<string, { role: string | null; ts: number }>();
@@ -29,208 +24,233 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [debugLog, setDebugLog] = useState<string[]>([]);
 
-  // Prevent race conditions — track in-flight role fetches
+  const roleRef = useRef<string | null>(null);
   const roleFetchRef = useRef<string | null>(null);
-  // Track if we've completed initial auth check
   const initializedRef = useRef(false);
-  // Mounted ref for cleanup
   const mountedRef = useRef(true);
 
-  const fetchRole = useCallback(async (userId: string, forceRefresh = false): Promise<string | null> => {
-    // Check cache first (unless force refresh)
-    if (!forceRefresh) {
-      const cached = roleCache.get(userId);
-      if (cached && Date.now() - cached.ts < ROLE_CACHE_TTL) {
-        console.log('[Auth] Role from cache:', cached.role);
-        return cached.role;
-      }
-    }
+  const addLog = useCallback((msg: string) => {
+    console.log(`[Auth] ${msg}`);
+    setDebugLog(prev => [...prev.slice(-19), `${new Date().toLocaleTimeString()}: ${msg}`]);
+  }, []);
 
-    // Prevent duplicate in-flight requests for the same user
-    if (roleFetchRef.current === userId && !forceRefresh) {
-      console.log('[Auth] Skipping duplicate role fetch for:', userId);
-      return role; // return current role while fetch is in progress
-    }
-
-    roleFetchRef.current = userId;
-    console.log('[Auth] Fetching role for:', userId);
-
-    try {
-      // Method 1: RPC (SECURITY DEFINER — bypasses RLS)
-      const { data: rpcData, error: rpcError } = await supabase.rpc('admin_get_my_role');
-      if (!rpcError && rpcData) {
-        console.log('[Auth] Role via RPC:', rpcData);
-        roleCache.set(userId, { role: rpcData as string, ts: Date.now() });
-        return rpcData as string;
-      }
-      if (rpcError) console.warn('[Auth] RPC error:', rpcError.message);
-    } catch (err) {
-      console.warn('[Auth] RPC exception:', err);
-    }
-
-    // Method 2: Direct query fallback
-    try {
-      const { data, error: queryError } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userId)
-        .single();
-      if (!queryError && data?.role) {
-        console.log('[Auth] Role via query:', data.role);
-        roleCache.set(userId, { role: data.role, ts: Date.now() });
-        return data.role;
-      }
-      if (queryError) console.warn('[Auth] Query error:', queryError.message);
-    } catch (err) {
-      console.warn('[Auth] Query exception:', err);
-    }
-
-    console.warn('[Auth] No role found for:', userId);
-    roleCache.set(userId, { role: null, ts: Date.now() });
-    return null;
+  // Update roleRef whenever role state changes
+  useEffect(() => {
+    roleRef.current = role;
   }, [role]);
 
-  // Single handler for processing auth state — used by both init and listener
+  const fetchRole = useCallback(async (userId: string, forceRefresh = false): Promise<string | null> => {
+    if (!forceRefresh) {
+      const cached = roleCache.get(userId);
+      if (cached && Date.now() - cached.ts < ROLE_CACHE_TTL) return cached.role;
+    }
+
+    if (roleFetchRef.current === userId && !forceRefresh) return roleRef.current;
+    roleFetchRef.current = userId;
+
+    addLog(`Fetching role for user ${userId.substring(0, 8)}...`);
+
+    let lastError = null;
+    
+    // Attempt 1: RPC with Retry
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const rpcPromise = supabase.rpc('admin_get_my_role');
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2500));
+        const response = await Promise.race([rpcPromise, timeoutPromise]) as any;
+        
+        if (response.error) {
+          addLog(`RPC Attempt ${attempt} error: ${response.error.message}`);
+          lastError = response.error;
+        } else if (response.data) {
+          addLog(`Role found via RPC: ${response.data}`);
+          roleCache.set(userId, { role: response.data as string, ts: Date.now() });
+          return response.data as string;
+        } else {
+          addLog(`RPC Attempt ${attempt} returned null data`);
+        }
+      } catch (err: any) {
+        addLog(`RPC Attempt ${attempt} exception: ${err.message}`);
+        lastError = err;
+      }
+      if (attempt < 2) await new Promise(r => setTimeout(r, 500));
+    }
+
+    // Attempt 2: Direct Table Query with Retry
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const { data, error: qErr } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', userId)
+          .maybeSingle();
+        
+        if (qErr) {
+          addLog(`Query Attempt ${attempt} error: ${qErr.message}`);
+          lastError = qErr;
+        } else if (data?.role) {
+          addLog(`Role found via Query: ${data.role}`);
+          roleCache.set(userId, { role: data.role, ts: Date.now() });
+          return data.role;
+        } else {
+          addLog(`Query Attempt ${attempt} returned no row`);
+        }
+      } catch (err: any) {
+        addLog(`Query Attempt ${attempt} exception: ${err.message}`);
+        lastError = err;
+      }
+      if (attempt < 2) await new Promise(r => setTimeout(r, 500));
+    }
+
+    addLog('Role fetch failed across all methods and retries.');
+    roleCache.set(userId, { role: null, ts: Date.now() });
+    return null;
+  }, [addLog]);
+
   const handleAuthState = useCallback(async (
     event: AuthChangeEvent | 'INIT',
-    session: Session | null
+    session: Session | null,
+    isInitial = false
   ) => {
     if (!mountedRef.current) return;
 
     const u = session?.user ?? null;
-    console.log('[Auth] Handle:', event, u?.email ?? 'no-user');
-
+    addLog(`Handling ${event} for ${u?.email || 'no-user'}`);
+    
     setUser(u);
 
     if (u) {
-      // Only fetch role on meaningful events, not on every TOKEN_REFRESHED
       const needsRoleFetch =
-        event === 'INIT' ||
         event === 'SIGNED_IN' ||
         event === 'INITIAL_SESSION' ||
-        // On token refresh, only fetch if we don't have a cached role
-        (event === 'TOKEN_REFRESHED' && !roleCache.has(u.id));
+        event === 'INIT' ||
+        (event === 'TOKEN_REFRESHED' && !roleRef.current);
 
       if (needsRoleFetch) {
+        // Wait for auth to settle
+        if (isInitial) await new Promise(r => setTimeout(r, 400));
+        
         const r = await fetchRole(u.id);
         if (mountedRef.current) {
           setRole(r);
+          roleRef.current = r;
         }
       }
     } else {
       setRole(null);
-      setError(null);
+      roleRef.current = null;
     }
 
     if (mountedRef.current) {
       setLoading(false);
+      if (isInitial) initializedRef.current = true;
     }
-  }, [fetchRole]);
+  }, [fetchRole, addLog]);
 
   useEffect(() => {
+    mountedRef.current = true;
+
     if (!isConfigured) {
       setLoading(false);
       return;
     }
 
-    mountedRef.current = true;
+    const initialize = async () => {
+      if (initializedRef.current) return;
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        await handleAuthState('INIT', session, true);
+      } catch (err: any) {
+        addLog(`Initialization crash: ${err.message}`);
+        if (mountedRef.current) setLoading(false);
+      } finally {
+        if (mountedRef.current) initializedRef.current = true;
+      }
+    };
 
-    // Use onAuthStateChange as the SINGLE source of truth.
-    // Supabase v2 fires INITIAL_SESSION synchronously during subscription,
-    // which includes the session from storage + handles OAuth redirect hash.
-    // This eliminates the race condition between getSession() + onAuthStateChange.
+    const safetyTimer = setTimeout(() => {
+      if (mountedRef.current && loading) {
+        addLog('Safety timeout triggered');
+        setLoading(false);
+      }
+    }, 8000);
+
+    initialize();
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event: AuthChangeEvent, session: Session | null) => {
-        if (!mountedRef.current) return;
-
-        // Mark as initialized on first event (INITIAL_SESSION)
-        if (!initializedRef.current) {
-          initializedRef.current = true;
+        if (event !== 'INITIAL_SESSION') {
+          await handleAuthState(event, session);
         }
-
-        await handleAuthState(event, session);
       }
     );
-
-    // Safety net: if onAuthStateChange hasn't fired within 3 seconds,
-    // force-check with getUser() + getSession() to prevent indefinite loading
-    // getUser() is recommended by Supabase for server-validated sessions.
-    const safetyTimeout = setTimeout(async () => {
-      if (!mountedRef.current) return;
-      if (!initializedRef.current) {
-        console.warn('[Auth] Safety timeout — onAuthStateChange did not fire, falling back to getUser()');
-        initializedRef.current = true;
-        try {
-          // 1. Get validated user from server
-          const { data: { user }, error: userError } = await supabase.auth.getUser();
-          // 2. Get local session data (for tokens)
-          const { data: { session } } = await supabase.auth.getSession();
-          
-          if (userError || !user) {
-             await handleAuthState('INIT', null);
-          } else {
-             // Overwrite session user with validated user to be safe
-             const validatedSession = session ? { ...session, user } : null;
-             await handleAuthState('INIT', validatedSession);
-          }
-        } catch (err) {
-          console.error('[Auth] Safety auth check error:', err);
-          if (mountedRef.current) {
-            setLoading(false);
-            setError('Failed to check authentication status');
-          }
-        }
-      }
-    }, 3000);
 
     return () => {
       mountedRef.current = false;
       subscription.unsubscribe();
-      clearTimeout(safetyTimeout);
+      clearTimeout(safetyTimer);
     };
-  }, [handleAuthState]);
+  }, [handleAuthState, loading, addLog]);
 
-  const signInWithGoogle = useCallback(async () => {
+  const signInWithEmail = useCallback(async (email: string, password: string) => {
     setError(null);
-    const redirectUrl = window.location.origin;
-    console.log('[Auth] OAuth redirect:', redirectUrl);
-
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: redirectUrl,
-      },
-    });
-
-    if (oauthError) {
-      console.error('[Auth] OAuth error:', oauthError.message);
-      setError(oauthError.message);
+    addLog(`Attempting sign in for ${email}...`);
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInError) {
+        addLog(`Sign in error: ${signInError.message}`);
+        setError(signInError.message);
+        return { error: signInError };
+      }
+      addLog('Sign in success');
+      return { error: null };
+    } catch (err: any) {
+      addLog(`Sign in exception: ${err.message}`);
+      setError(err.message || 'An unexpected error occurred');
+      return { error: err };
     }
-  }, []);
+  }, [addLog]);
 
   const signOut = useCallback(async () => {
     setError(null);
-    // Clear role cache on sign out
     roleCache.clear();
     roleFetchRef.current = null;
-    initializedRef.current = false;
-
+    addLog('Signing out...');
     try {
       await supabase.auth.signOut();
-    } catch (err) {
-      console.error('[Auth] Sign out error:', err);
+    } catch (err: any) {
+      addLog(`Sign out error: ${err.message}`);
+    } finally {
+      if (mountedRef.current) {
+        setUser(null);
+        setRole(null);
+        roleRef.current = null;
+      }
     }
-    // Force clear state even if signOut API fails
-    setUser(null);
-    setRole(null);
-  }, []);
+  }, [addLog]);
+
+  const refreshRole = useCallback(async () => {
+    if (user) {
+      setLoading(true);
+      const r = await fetchRole(user.id, true);
+      if (mountedRef.current) {
+        setRole(r);
+        setLoading(false);
+      }
+    }
+  }, [user, fetchRole]);
 
   return (
-    <AuthContext.Provider value={{ user, role, loading, error, signInWithGoogle, signOut }}>
+    <AuthContext.Provider value={{ user, role, loading, error, debugLog, signInWithEmail, signOut, refreshRole }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-export const useAuth = () => useContext(AuthContext);
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) throw new Error('useAuth must be used within AuthProvider');
+  return context;
+};
