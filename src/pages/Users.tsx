@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
-import { Search, Filter } from 'lucide-react';
+import { Search, Filter, Plus, Eye, Pencil, Ban, Trash2, X, UserPlus, AlertTriangle, Loader2 } from 'lucide-react';
 
 const PAGE_SIZE = 20;
+
+const DEFAULT_NEW_USER = { email: '', password: '', display_name: '', access_status: 'approved' };
 
 export default function UsersPage() {
   const [users, setUsers] = useState<any[]>([]);
@@ -15,9 +17,20 @@ export default function UsersPage() {
   const [emails, setEmails] = useState<Record<string, string>>({});
   const navigate = useNavigate();
 
-  useEffect(() => { loadUsers(); }, [statusFilter, page]);
+  // Modals
+  const [addModal, setAddModal] = useState(false);
+  const [editModal, setEditModal] = useState<any>(null);
+  const [banModal, setBanModal] = useState<any>(null);
+  const [deleteModal, setDeleteModal] = useState<any>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
-  async function loadUsers() {
+  // Form state
+  const [newUser, setNewUser] = useState({ ...DEFAULT_NEW_USER });
+  const [editUser, setEditUser] = useState({ display_name: '', access_status: '', email: '' });
+  const [saving, setSaving] = useState(false);
+  const [actionError, setActionError] = useState('');
+
+  const loadUsers = useCallback(async () => {
     setLoading(true);
     let query = supabase.from('profiles')
       .select('id, username, display_name, bio, avatar_url, phone, is_public, is_complete, access_status, created_at', { count: 'exact' });
@@ -31,7 +44,6 @@ export default function UsersPage() {
     setUsers(data || []);
     setTotal(count || 0);
 
-    // Fetch emails
     if (data && data.length > 0) {
       const { data: emailData } = await supabase.rpc('admin_get_user_emails', {
         user_ids: data.map((u: any) => u.id)
@@ -43,7 +55,9 @@ export default function UsersPage() {
       }
     }
     setLoading(false);
-  }
+  }, [statusFilter, page]);
+
+  useEffect(() => { loadUsers(); }, [loadUsers]);
 
   const filtered = users.filter(u =>
     !search || [u.display_name, u.username, emails[u.id]].filter(Boolean).some(
@@ -53,11 +67,87 @@ export default function UsersPage() {
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
+  // ─── Actions ───────────────────────────────────────────────
+  async function handleAddUser() {
+    if (!newUser.email || !newUser.password) return;
+    setSaving(true); setActionError('');
+    const { error } = await supabase.rpc('admin_create_user', {
+      user_email: newUser.email,
+      user_password: newUser.password,
+      user_display_name: newUser.display_name || null,
+      user_access_status: newUser.access_status,
+    });
+    setSaving(false);
+    if (error) { setActionError(error.message); return; }
+    setAddModal(false);
+    setNewUser({ ...DEFAULT_NEW_USER });
+    loadUsers();
+  }
+
+  async function handleEditUser() {
+    if (!editModal) return;
+    setSaving(true); setActionError('');
+    const { error } = await supabase.rpc('admin_update_user', {
+      target_user_id: editModal.id,
+      new_display_name: editUser.display_name || null,
+      new_access_status: editUser.access_status || null,
+      new_email: editUser.email !== emails[editModal.id] ? editUser.email : null,
+    });
+    setSaving(false);
+    if (error) { setActionError(error.message); return; }
+    setEditModal(null);
+    loadUsers();
+  }
+
+  async function handleBanUser() {
+    if (!banModal) return;
+    setSaving(true); setActionError('');
+    const { error } = await supabase.rpc('admin_ban_user', {
+      target_user_id: banModal.id,
+      ban_reason: 'Banned via admin panel',
+    });
+    setSaving(false);
+    if (error) { setActionError(error.message); return; }
+    setBanModal(null);
+    loadUsers();
+  }
+
+  async function handleHardDelete() {
+    if (!deleteModal || deleteConfirmText !== 'DELETE') return;
+    setSaving(true); setActionError('');
+    const { error } = await supabase.rpc('admin_hard_delete_user', {
+      target_user_id: deleteModal.id,
+    });
+    setSaving(false);
+    if (error) { setActionError(error.message); return; }
+    setDeleteModal(null);
+    setDeleteConfirmText('');
+    loadUsers();
+  }
+
+  function openEdit(u: any) {
+    setEditModal(u);
+    setEditUser({ display_name: u.display_name || '', access_status: u.access_status || '', email: emails[u.id] || '' });
+    setActionError('');
+  }
+
+  // ─── Status badge colour ────────────────────────────────────
+  function statusClass(s: string) {
+    return s === 'approved' ? 'badge-success' : s === 'pending' ? 'badge-warning' : s === 'banned' ? 'badge-danger' : 'badge-default';
+  }
+
   return (
     <div>
       <div className="page-header">
-        <h1>All Users</h1>
-        <p>{total} total users across the platform</p>
+        <div className="page-header-row">
+          <div>
+            <h1>All Users</h1>
+            <p>{total} total users across the platform</p>
+          </div>
+          <button className="btn btn-primary" onClick={() => { setAddModal(true); setActionError(''); }}>
+            <UserPlus size={16} /> Add User
+          </button>
+        </div>
       </div>
 
       <div className="data-card">
@@ -80,6 +170,7 @@ export default function UsersPage() {
                 <option value="pending">Pending</option>
                 <option value="approved">Approved</option>
                 <option value="rejected">Rejected</option>
+                <option value="banned">Banned</option>
               </select>
             </div>
           </div>
@@ -103,11 +194,12 @@ export default function UsersPage() {
                     <th>Status</th>
                     <th>Profile</th>
                     <th>Joined</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map(user => (
-                    <tr key={user.id} className="clickable-row" onClick={() => navigate(`/users/${user.id}`)}>
+                    <tr key={user.id}>
                       <td>
                         <div className="user-cell">
                           <div className="user-cell-avatar">
@@ -120,7 +212,7 @@ export default function UsersPage() {
                         </div>
                       </td>
                       <td style={{ fontSize: '0.82rem' }}>{emails[user.id] || '—'}</td>
-                      <td><span className={`badge badge-${user.access_status}`}>{user.access_status}</span></td>
+                      <td><span className={`badge ${statusClass(user.access_status)}`}>{user.access_status}</span></td>
                       <td>
                         <div className="flex-center gap-sm">
                           {user.is_complete ? <span className="badge badge-success">Complete</span> : <span className="badge badge-warning">Incomplete</span>}
@@ -129,6 +221,39 @@ export default function UsersPage() {
                       </td>
                       <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
                         {new Date(user.created_at).toLocaleDateString()}
+                      </td>
+                      <td>
+                        <div className="flex-center gap-sm" style={{ flexWrap: 'nowrap' }}>
+                          <button
+                            className="btn btn-ghost btn-icon btn-sm"
+                            title="View Profile"
+                            onClick={() => navigate(`/users/${user.id}`)}
+                          >
+                            <Eye size={14} />
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-icon btn-sm"
+                            title="Edit User"
+                            onClick={() => openEdit(user)}
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            className="btn btn-warning btn-icon btn-sm"
+                            title="Ban User"
+                            disabled={user.access_status === 'banned'}
+                            onClick={() => { setBanModal(user); setActionError(''); }}
+                          >
+                            <Ban size={14} />
+                          </button>
+                          <button
+                            className="btn btn-danger btn-icon btn-sm"
+                            title="Permanently Delete"
+                            onClick={() => { setDeleteModal(user); setDeleteConfirmText(''); setActionError(''); }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -147,6 +272,157 @@ export default function UsersPage() {
           </>
         )}
       </div>
+
+      {/* ── Add User Modal ─────────────────────────────── */}
+      {addModal && (
+        <div className="modal-overlay" onClick={() => setAddModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2><Plus size={18} /> Add New User</h2>
+              <button className="btn btn-ghost btn-icon" onClick={() => setAddModal(false)}><X size={18} /></button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group mb-md">
+                <label className="form-label">Email Address *</label>
+                <input className="input-field" type="email" placeholder="user@example.com" value={newUser.email} onChange={e => setNewUser(p => ({ ...p, email: e.target.value }))} />
+              </div>
+              <div className="form-group mb-md">
+                <label className="form-label">Password *</label>
+                <input className="input-field" type="password" placeholder="Min 6 characters" value={newUser.password} onChange={e => setNewUser(p => ({ ...p, password: e.target.value }))} />
+              </div>
+              <div className="form-group mb-md">
+                <label className="form-label">Display Name</label>
+                <input className="input-field" placeholder="Full name" value={newUser.display_name} onChange={e => setNewUser(p => ({ ...p, display_name: e.target.value }))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Access Status</label>
+                <select className="select-field" value={newUser.access_status} onChange={e => setNewUser(p => ({ ...p, access_status: e.target.value }))}>
+                  <option value="approved">Approved</option>
+                  <option value="pending">Pending</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </div>
+              {actionError && <div className="auth-error" style={{ marginTop: 12 }}><AlertTriangle size={14} />{actionError}</div>}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setAddModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleAddUser} disabled={saving || !newUser.email || !newUser.password}>
+                {saving ? <><Loader2 size={14} className="animate-spin" /> Creating...</> : 'Create User'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit User Modal ─────────────────────────────── */}
+      {editModal && (
+        <div className="modal-overlay" onClick={() => setEditModal(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2><Pencil size={18} /> Edit User</h2>
+              <button className="btn btn-ghost btn-icon" onClick={() => setEditModal(null)}><X size={18} /></button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group mb-md">
+                <label className="form-label">Email Address</label>
+                <input className="input-field" type="email" value={editUser.email} onChange={e => setEditUser(p => ({ ...p, email: e.target.value }))} />
+              </div>
+              <div className="form-group mb-md">
+                <label className="form-label">Display Name</label>
+                <input className="input-field" value={editUser.display_name} onChange={e => setEditUser(p => ({ ...p, display_name: e.target.value }))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Access Status</label>
+                <select className="select-field" value={editUser.access_status} onChange={e => setEditUser(p => ({ ...p, access_status: e.target.value }))}>
+                  <option value="approved">Approved</option>
+                  <option value="pending">Pending</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="banned">Banned</option>
+                </select>
+              </div>
+              {actionError && <div className="auth-error" style={{ marginTop: 12 }}><AlertTriangle size={14} />{actionError}</div>}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setEditModal(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleEditUser} disabled={saving}>
+                {saving ? <><Loader2 size={14} className="animate-spin" /> Saving...</> : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Ban Confirmation ────────────────────────────── */}
+      {banModal && (
+        <div className="modal-overlay" onClick={() => setBanModal(null)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2><Ban size={18} /> Ban User</h2>
+              <button className="btn btn-ghost btn-icon" onClick={() => setBanModal(null)}><X size={18} /></button>
+            </div>
+            <div className="modal-body">
+              <div className="confirm-dialog">
+                <div className="confirm-icon warn"><Ban size={28} /></div>
+                <p>Ban <strong>{banModal.display_name || banModal.username || 'this user'}</strong>?</p>
+                <p className="text-muted" style={{ fontSize: '0.85rem' }}>
+                  Their account will be suspended. This is reversible — you can unban them later via Edit.
+                </p>
+              </div>
+              {actionError && <div className="auth-error" style={{ marginTop: 12 }}><AlertTriangle size={14} />{actionError}</div>}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setBanModal(null)}>Cancel</button>
+              <button className="btn btn-warning" onClick={handleBanUser} disabled={saving}>
+                {saving ? <><Loader2 size={14} className="animate-spin" /> Banning...</> : 'Yes, Ban User'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Hard Delete Confirmation ─────────────────────── */}
+      {deleteModal && (
+        <div className="modal-overlay" onClick={() => setDeleteModal(null)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2><Trash2 size={18} /> Permanently Delete</h2>
+              <button className="btn btn-ghost btn-icon" onClick={() => setDeleteModal(null)}><X size={18} /></button>
+            </div>
+            <div className="modal-body">
+              <div className="confirm-dialog">
+                <div className="confirm-icon danger"><AlertTriangle size={28} /></div>
+                <p><strong>This action cannot be undone.</strong></p>
+                <p className="text-muted" style={{ fontSize: '0.85rem' }}>
+                  All data for <strong>{deleteModal.display_name || deleteModal.username || 'this user'}</strong> will be permanently deleted from the database.
+                </p>
+                <div className="form-group" style={{ marginTop: 16 }}>
+                  <label className="form-label" style={{ color: 'var(--danger)' }}>
+                    Type <strong>DELETE</strong> to confirm
+                  </label>
+                  <input
+                    className="input-field"
+                    placeholder="DELETE"
+                    value={deleteConfirmText}
+                    onChange={e => setDeleteConfirmText(e.target.value)}
+                    style={{ borderColor: deleteConfirmText === 'DELETE' ? 'var(--danger)' : undefined }}
+                  />
+                </div>
+              </div>
+              {actionError && <div className="auth-error" style={{ marginTop: 12 }}><AlertTriangle size={14} />{actionError}</div>}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setDeleteModal(null)}>Cancel</button>
+              <button
+                className="btn btn-danger"
+                onClick={handleHardDelete}
+                disabled={saving || deleteConfirmText !== 'DELETE'}
+              >
+                {saving ? <><Loader2 size={14} className="animate-spin" /> Deleting...</> : 'Permanently Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
