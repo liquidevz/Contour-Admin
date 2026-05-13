@@ -19,6 +19,10 @@ import Tags from './pages/Tags';
 import Ontology from './pages/Ontology';
 import Analytics from './pages/Analytics';
 import AuditLog from './pages/AuditLog';
+import Events from './pages/Events';
+import OnboardingFunnel from './pages/OnboardingFunnel';
+import OtaReleases from './pages/OtaReleases';
+import Notifications from './pages/Notifications';
 import Settings from './pages/Settings';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -78,6 +82,10 @@ export default function App() {
               <Route path="tags" element={<PageWrapper><Tags /></PageWrapper>} />
               <Route path="ontology" element={<PageWrapper><Ontology /></PageWrapper>} />
               <Route path="analytics" element={<PageWrapper><Analytics /></PageWrapper>} />
+              <Route path="events" element={<PageWrapper><Events /></PageWrapper>} />
+              <Route path="onboarding" element={<PageWrapper><OnboardingFunnel /></PageWrapper>} />
+              <Route path="ota" element={<PageWrapper><OtaReleases /></PageWrapper>} />
+              <Route path="notifications" element={<PageWrapper><Notifications /></PageWrapper>} />
               <Route path="audit-log" element={<PageWrapper><AuditLog /></PageWrapper>} />
               <Route path="settings" element={<PageWrapper><Settings /></PageWrapper>} />
             </Route>

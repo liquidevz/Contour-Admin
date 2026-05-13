@@ -4,7 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard, Users, UserCheck, ShoppingBag, HandHeart,
   Flag, MessageSquare, Zap, ToggleLeft, Tag, Layers, BarChart3,
-  ScrollText, Settings, LogOut, Menu, X, ChevronDown, Shield
+  ScrollText, Settings, LogOut, Menu, X, ChevronDown, Shield,
+  Activity, GitBranch, CloudDownload, Bell
 } from 'lucide-react';
 
 const navSections = [
@@ -33,6 +34,7 @@ const navSections = [
     label: 'Communication',
     items: [
       { to: '/messages', icon: MessageSquare, label: 'Messages' },
+      { to: '/notifications', icon: Bell, label: 'Notifications' },
     ]
   },
   {
@@ -54,7 +56,15 @@ const navSections = [
     label: 'Insights',
     items: [
       { to: '/analytics', icon: BarChart3, label: 'Analytics' },
+      { to: '/events', icon: Activity, label: 'Events' },
+      { to: '/onboarding', icon: GitBranch, label: 'Onboarding' },
       { to: '/audit-log', icon: ScrollText, label: 'Audit Log' },
+    ]
+  },
+  {
+    label: 'Releases',
+    items: [
+      { to: '/ota', icon: CloudDownload, label: 'OTA Releases' },
     ]
   },
   {
