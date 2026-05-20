@@ -35,9 +35,16 @@ export default function ListingsPage({ type }: ListingPageProps) {
   async function loadItems() {
     setLoading(true);
     setError(null);
-    const fk = type === 'offer' ? 'user_offers_user_id_fkey' : 'user_wants_user_id_fkey';
+    
     let query = supabase.from(table)
-      .select(`*, profiles!${fk}(display_name, username, avatar_url)`, { count: 'exact' });
+      .select(`
+        *,
+        profiles:user_id (
+          display_name,
+          username,
+          avatar_url
+        )
+      `, { count: 'exact' });
 
     if (filter === 'active') query = query.eq('is_active', true);
     else if (filter === 'inactive') query = query.eq('is_active', false);
