@@ -19,12 +19,12 @@ export default function UserDetail() {
   useEffect(() => {
     if (activeTab !== 'platform' || !id) return;
     setTabLoading(true);
-    supabase.rpc('admin_get_user_overview', { p_user_id: id })
-      .then(({ data, error }) => {
-        if (error) console.warn('[UserDetail] overview', error);
-        setOverview(data);
-      })
-      .finally(() => setTabLoading(false));
+    void (async () => {
+      const { data, error } = await supabase.rpc('admin_get_user_overview', { p_user_id: id });
+      if (error) console.warn('[UserDetail] overview', error);
+      setOverview(data);
+      setTabLoading(false);
+    })();
   }, [activeTab, id]);
 
   async function banUser() {

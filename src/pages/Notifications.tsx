@@ -507,7 +507,7 @@ function Composer({ onClose, onSent }: { onClose: () => void; onSent: () => void
     }
 
     setSubmitting(true);
-    const { data: campaignId, error: rpcErr } = await supabase.rpc('admin_create_notification_campaign', {
+    const { error: rpcErr } = await supabase.rpc('admin_create_notification_campaign', {
       p_title:         title.trim(),
       p_body:          body.trim(),
       p_audience:      audience,
@@ -550,7 +550,7 @@ function Composer({ onClose, onSent }: { onClose: () => void; onSent: () => void
         try { parsedData = JSON.parse(dataText); }
         catch { setError('Custom data must be valid JSON.'); return; }
       }
-      const { data: campaignId, error: rpcErr } = await supabase.rpc(
+      const { error: rpcErr } = await supabase.rpc(
         'admin_create_notification_campaign',
         {
           p_title:         `[TEST] ${title.trim()}`,
@@ -567,7 +567,6 @@ function Composer({ onClose, onSent }: { onClose: () => void; onSent: () => void
         return;
       }
       // Test sends ride the same DB-trigger path as real sends.
-      void campaignId;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

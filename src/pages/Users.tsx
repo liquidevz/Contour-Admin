@@ -413,14 +413,11 @@ export default function UsersPage() {
                     onChange={e => setEditUser(p => ({ ...p, access_status: e.target.value }))}
                     style={{ paddingRight: 36 }}
                   >
-                    {STATUS_OPTIONS.map(opt => {
-                      const Icon = opt.icon;
-                      return (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      );
-                    })}
+                    {STATUS_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
                   </select>
                   <ChevronDown size={16} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }} />
                 </div>
