@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Search, Power, Trash2, RotateCw } from 'lucide-react';
+import { Search, Power, Trash2, RotateCw, ExternalLink } from 'lucide-react';
 
 const PAGE_SIZE = 20;
 
@@ -18,11 +19,22 @@ export default function ListingsPage({ type }: ListingPageProps) {
   const [filter, setFilter] = useState<string>('all');
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { loadItems(); }, [page, filter]);
+  useEffect(() => { 
+    loadItems(); 
+  }, [type, page, filter]);
+
+  // Reset page when type changes
+  useEffect(() => {
+    setPage(0);
+    setFilter('all');
+    setSearch('');
+  }, [type]);
 
   async function loadItems() {
     setLoading(true);
+    setError(null);
     const fk = type === 'offer' ? 'user_offers_user_id_fkey' : 'user_wants_user_id_fkey';
     let query = supabase.from(table)
       .select(`*, profiles!${fk}(display_name, username, avatar_url)`, { count: 'exact' });
@@ -30,32 +42,46 @@ export default function ListingsPage({ type }: ListingPageProps) {
     if (filter === 'active') query = query.eq('is_active', true);
     else if (filter === 'inactive') query = query.eq('is_active', false);
 
-    const { data, count } = await query
+    const { data, count, error: queryError } = await query
       .order('created_at', { ascending: false })
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
-    setItems(data || []);
-    setTotal(count || 0);
+    if (queryError) {
+      console.error('Query error:', queryError);
+      setError(queryError.message);
+      setItems([]);
+      setTotal(0);
+    } else {
+      setItems(data || []);
+      setTotal(count || 0);
+    }
     setLoading(false);
   }
 
   async function toggleActive(id: string, currentlyActive: boolean) {
-    await supabase.from(table).update({ is_active: !currentlyActive }).eq('id', id);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) await supabase.from('admin_audit_logs').insert({
-      admin_id: user.id,
-      action: currentlyActive ? `deactivate_${type}` : `reactivate_${type}`,
-      entity: table, entity_id: id,
+    const { error: updateErr } = await supabase.from(table)
+      .update({ is_active: !currentlyActive }).eq('id', id);
+    if (updateErr) { alert(updateErr.message); return; }
+    // Use the canonical audit helper (migration 030 §4) so RLS, role
+    // checks, and metadata shape stay consistent across all admin RPCs.
+    await supabase.rpc('admin_audit', {
+      p_action: currentlyActive ? `deactivate_${type}` : `reactivate_${type}`,
+      p_entity: table,
+      p_entity_id: id,
+      p_metadata: {},
     });
     setItems(prev => prev.map(item => item.id === id ? { ...item, is_active: !currentlyActive } : item));
   }
 
   async function deleteItem(id: string) {
     if (!confirm(`Permanently delete this ${type}?`)) return;
-    await supabase.from(table).delete().eq('id', id);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) await supabase.from('admin_audit_logs').insert({
-      admin_id: user.id, action: `delete_${type}`, entity: table, entity_id: id,
+    const { error: delErr } = await supabase.from(table).delete().eq('id', id);
+    if (delErr) { alert(delErr.message); return; }
+    await supabase.rpc('admin_audit', {
+      p_action: `delete_${type}`,
+      p_entity: table,
+      p_entity_id: id,
+      p_metadata: {},
     });
     setItems(prev => prev.filter(item => item.id !== id));
     setTotal(t => t - 1);
@@ -98,6 +124,12 @@ export default function ListingsPage({ type }: ListingPageProps) {
 
         {loading ? (
           <div className="loading-state"><div className="spinner" /></div>
+        ) : error ? (
+          <div className="empty-state" style={{ color: 'var(--danger)' }}>
+            <h3>Error loading {title.toLowerCase()}</h3>
+            <p>{error}</p>
+            <button className="btn btn-primary" onClick={loadItems} style={{ marginTop: 16 }}>Retry</button>
+          </div>
         ) : filtered.length === 0 ? (
           <div className="empty-state">
             <h3>No {title.toLowerCase()} found</h3>
@@ -131,14 +163,17 @@ export default function ListingsPage({ type }: ListingPageProps) {
                         </div>
                       </td>
                       <td>
-                        <div className="user-cell">
+                        <Link to={`/users/${item.user_id}`} className="user-cell"
+                          style={{ textDecoration: 'none', color: 'inherit' }}
+                          title="Open user detail">
                           <div className="user-cell-avatar">
                             {item.profiles?.avatar_url ? <img src={item.profiles.avatar_url} alt="" /> : (item.profiles?.display_name || '?')[0].toUpperCase()}
                           </div>
-                          <span className="user-cell-name" style={{ fontSize: '0.82rem' }}>
+                          <span className="user-cell-name" style={{ fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                             {item.profiles?.display_name || 'Unknown'}
+                            <ExternalLink size={10} style={{ opacity: 0.5 }} />
                           </span>
-                        </div>
+                        </Link>
                       </td>
                       <td>
                         {item.category ? <span className="tag-chip">{item.category}</span> : '—'}

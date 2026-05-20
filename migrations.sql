@@ -115,21 +115,66 @@ CREATE POLICY "admins_read_all_profile_tags" ON public.profile_tags
 -- ────────────────────────────────────────────────────────────
 -- Migration 7: Admin RLS — Marketplace
 -- ────────────────────────────────────────────────────────────
+
+-- 7a: Create user_offers table
+CREATE TABLE IF NOT EXISTS public.user_offers (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  title        text NOT NULL,
+  description  text,
+  category     text,
+  is_active    boolean NOT NULL DEFAULT true,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  updated_at   timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_offers_user_id ON public.user_offers(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_offers_is_active ON public.user_offers(is_active);
+CREATE INDEX IF NOT EXISTS idx_user_offers_created_at ON public.user_offers(created_at DESC);
+
+ALTER TABLE public.user_offers ENABLE ROW LEVEL SECURITY;
+
+-- 7b: Create user_wants table
+CREATE TABLE IF NOT EXISTS public.user_wants (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  title        text NOT NULL,
+  description  text,
+  category     text,
+  is_active    boolean NOT NULL DEFAULT true,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  updated_at   timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_wants_user_id ON public.user_wants(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_wants_is_active ON public.user_wants(is_active);
+CREATE INDEX IF NOT EXISTS idx_user_wants_created_at ON public.user_wants(created_at DESC);
+
+ALTER TABLE public.user_wants ENABLE ROW LEVEL SECURITY;
+
+-- 7c: RLS policies for user_offers
+DROP POLICY IF EXISTS "admins_read_all_offers" ON public.user_offers;
 CREATE POLICY "admins_read_all_offers" ON public.user_offers
   FOR SELECT USING (get_user_role(auth.uid()) IN ('admin', 'superadmin', 'moderator'));
 
+DROP POLICY IF EXISTS "admins_update_offers" ON public.user_offers;
 CREATE POLICY "admins_update_offers" ON public.user_offers
   FOR UPDATE USING (get_user_role(auth.uid()) IN ('admin', 'superadmin', 'moderator'));
 
+DROP POLICY IF EXISTS "admins_delete_offers" ON public.user_offers;
 CREATE POLICY "admins_delete_offers" ON public.user_offers
   FOR DELETE USING (get_user_role(auth.uid()) IN ('admin', 'superadmin'));
 
+-- 7d: RLS policies for user_wants
+DROP POLICY IF EXISTS "admins_read_all_wants" ON public.user_wants;
 CREATE POLICY "admins_read_all_wants" ON public.user_wants
   FOR SELECT USING (get_user_role(auth.uid()) IN ('admin', 'superadmin', 'moderator'));
 
+DROP POLICY IF EXISTS "admins_update_wants" ON public.user_wants;
 CREATE POLICY "admins_update_wants" ON public.user_wants
   FOR UPDATE USING (get_user_role(auth.uid()) IN ('admin', 'superadmin', 'moderator'));
 
+DROP POLICY IF EXISTS "admins_delete_wants" ON public.user_wants;
 CREATE POLICY "admins_delete_wants" ON public.user_wants
   FOR DELETE USING (get_user_role(auth.uid()) IN ('admin', 'superadmin'));
 

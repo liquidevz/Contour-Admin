@@ -343,6 +343,85 @@ export default function OtaReleases() {
           </div>
         </>
       )}
+
+      <ReleaseHealth />
+    </div>
+  );
+}
+
+// ─── Release Health (OP-01) ──────────────────────────────────
+// Joins app_version across user_events + app_error_logs over the
+// last 30 days so a bad release stands out by error rate even if
+// the OTA-specific tables don't have a clean release-id link.
+
+interface ReleaseHealthRow {
+  app_version: string;
+  events:      number;
+  users:       number;
+  errors:      number;
+  error_rate:  number;
+  first_seen:  string;
+  last_seen:   string;
+}
+
+function ReleaseHealth() {
+  const [rows, setRows]  = useState<ReleaseHealthRow[]>([]);
+  const [loading, setLd] = useState(true);
+
+  useEffect(() => {
+    void (async () => {
+      const { data, error } = await supabase.rpc('admin_get_release_health', {
+        p_days_back: 30, p_lim: 50,
+      });
+      if (error) console.warn('[ReleaseHealth] load', error);
+      setRows((data as ReleaseHealthRow[]) || []);
+      setLd(false);
+    })();
+  }, []);
+
+  return (
+    <div className="data-card" style={{ marginTop: 16 }}>
+      <div className="data-card-header">
+        <span className="data-card-title">Release health — last 30 days</span>
+      </div>
+      {loading ? <div className="loading-state"><div className="spinner" /></div>
+        : rows.length === 0 ? <div className="empty-state"><h3>No version data</h3></div>
+        : (
+          <div className="data-table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>App version</th>
+                  <th>Events</th>
+                  <th>Users</th>
+                  <th>Errors</th>
+                  <th>Error rate</th>
+                  <th>Last seen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(r => {
+                  const rate = Number(r.error_rate) * 100;
+                  const hot = rate > 5;
+                  return (
+                    <tr key={r.app_version}>
+                      <td style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 600 }}>{r.app_version}</td>
+                      <td>{r.events}</td>
+                      <td>{r.users}</td>
+                      <td style={{ color: r.errors > 0 ? '#F59E0B' : undefined }}>{r.errors}</td>
+                      <td style={{ color: hot ? '#ff5b6b' : rate > 1 ? '#F59E0B' : '#14B8A6', fontWeight: 600 }}>
+                        {rate.toFixed(2)}%
+                      </td>
+                      <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        {new Date(r.last_seen).toLocaleString()}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
     </div>
   );
 }

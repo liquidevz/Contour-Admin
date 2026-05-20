@@ -83,6 +83,8 @@ export default function Dashboard() {
         <p>Platform overview and key metrics</p>
       </div>
 
+      <LiveSignals />
+
       <div className="stats-grid">
         {statCards.map((card) => (
           <div
@@ -196,6 +198,122 @@ export default function Dashboard() {
             </table>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Live signals (O-03) ─────────────────────────────────────
+// Subscribes to Realtime INSERTs on the three highest-signal
+// telemetry tables and renders a per-table counter that ticks up
+// as events stream in. We also keep a 5-minute rolling window of
+// last-N timestamps so the sparkline approximates rate-per-minute.
+//
+// RLS still applies on the channel server-side — admins see all.
+
+interface SignalState {
+  count:   number;      // since this card mounted
+  recent:  number[];    // timestamps in ms for last 5min
+  lastAt:  string | null;
+}
+
+function emptySignal(): SignalState { return { count: 0, recent: [], lastAt: null }; }
+
+function LiveSignals() {
+  const [events,    setEvents]    = useState<SignalState>(emptySignal);
+  const [errors,    setErrors]    = useState<SignalState>(emptySignal);
+  const [pushes,    setPushes]    = useState<SignalState>(emptySignal);
+  const [connected, setConnected] = useState(false);
+
+  useEffect(() => {
+    const handle = (
+      setter: React.Dispatch<React.SetStateAction<SignalState>>,
+    ) => (payload: { new: { created_at?: string; queued_at?: string } }) => {
+      const ts = payload.new?.created_at ?? payload.new?.queued_at ?? new Date().toISOString();
+      const tMs = new Date(ts).getTime();
+      setter(prev => {
+        const cutoff = Date.now() - 5 * 60_000;
+        return {
+          count: prev.count + 1,
+          recent: [...prev.recent, tMs].filter(t => t >= cutoff),
+          lastAt: ts,
+        };
+      });
+    };
+
+    const channel = supabase
+      .channel('dashboard-live')
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'user_events' },     handle(setEvents))
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'app_error_logs' }, handle(setErrors))
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notification_deliveries' }, handle(setPushes))
+      .subscribe(status => setConnected(status === 'SUBSCRIBED'));
+
+    // Decay the recent window even when no new events fire, so an
+    // idle dashboard doesn't keep showing a stale 5-min rate.
+    const t = window.setInterval(() => {
+      const cutoff = Date.now() - 5 * 60_000;
+      setEvents(p => ({ ...p, recent: p.recent.filter(x => x >= cutoff) }));
+      setErrors(p => ({ ...p, recent: p.recent.filter(x => x >= cutoff) }));
+      setPushes(p => ({ ...p, recent: p.recent.filter(x => x >= cutoff) }));
+    }, 10_000);
+
+    return () => { void supabase.removeChannel(channel); window.clearInterval(t); };
+  }, []);
+
+  return (
+    <div style={{
+      display: 'grid', gap: 12, marginBottom: 16,
+      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    }}>
+      <SignalCard label="Events (live)"     state={events} color="#7C3AED"
+        connected={connected} icon={<Activity size={14} />} />
+      <SignalCard label="Errors (live)"     state={errors} color="#ff5b6b"
+        connected={connected} icon={<AlertTriangle size={14} />} />
+      <SignalCard label="Push deliveries"   state={pushes} color="#14B8A6"
+        connected={connected} icon={<Zap size={14} />} />
+    </div>
+  );
+}
+
+function SignalCard({
+  label, state, color, connected, icon,
+}: {
+  label: string; state: SignalState; color: string; connected: boolean; icon: React.ReactNode;
+}) {
+  const ratePerMin = state.recent.length / 5;
+  return (
+    <div style={{
+      background: 'var(--bg-secondary, #11111a)',
+      border: '1px solid var(--border, #2a2a35)',
+      borderRadius: 8, padding: 14,
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        color: 'var(--text-muted)', fontSize: 11,
+        textTransform: 'uppercase', letterSpacing: 0.5,
+        marginBottom: 6,
+      }}>
+        <span style={{
+          width: 6, height: 6, borderRadius: '50%',
+          background: connected ? color : '#5a5a6e',
+          boxShadow: connected ? `0 0 0 3px ${color}33` : 'none',
+        }} />
+        {icon}
+        {label}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+        <span style={{ fontSize: 26, fontWeight: 700, color: 'var(--text-primary, #fff)' }}>
+          {state.count}
+        </span>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+          {ratePerMin.toFixed(1)}/min (5m)
+        </span>
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+        {state.lastAt ? `last: ${new Date(state.lastAt).toLocaleTimeString()}` : 'waiting…'}
       </div>
     </div>
   );

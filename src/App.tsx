@@ -23,6 +23,14 @@ import Events from './pages/Events';
 import OnboardingFunnel from './pages/OnboardingFunnel';
 import OtaReleases from './pages/OtaReleases';
 import Notifications from './pages/Notifications';
+import DeliveryQueue from './pages/DeliveryQueue';
+import RemoteConfig from './pages/RemoteConfig';
+import Errors from './pages/Errors';
+import EdgeLogs from './pages/EdgeLogs';
+import Latency from './pages/Latency';
+import BackgroundJobs from './pages/BackgroundJobs';
+import AdminSessions from './pages/AdminSessions';
+import Security from './pages/Security';
 import Settings from './pages/Settings';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -78,6 +86,7 @@ export default function App() {
               <Route path="messages" element={<PageWrapper><Messages /></PageWrapper>} />
               <Route path="match-analytics" element={<PageWrapper><MatchAnalytics /></PageWrapper>} />
               <Route path="feature-flags" element={<PageWrapper><FeatureFlags /></PageWrapper>} />
+              <Route path="remote-config" element={<PageWrapper><RemoteConfig /></PageWrapper>} />
               <Route path="categories" element={<PageWrapper><Categories /></PageWrapper>} />
               <Route path="tags" element={<PageWrapper><Tags /></PageWrapper>} />
               <Route path="ontology" element={<PageWrapper><Ontology /></PageWrapper>} />
@@ -86,7 +95,14 @@ export default function App() {
               <Route path="onboarding" element={<PageWrapper><OnboardingFunnel /></PageWrapper>} />
               <Route path="ota" element={<PageWrapper><OtaReleases /></PageWrapper>} />
               <Route path="notifications" element={<PageWrapper><Notifications /></PageWrapper>} />
+              <Route path="delivery-queue" element={<PageWrapper><DeliveryQueue /></PageWrapper>} />
               <Route path="audit-log" element={<PageWrapper><AuditLog /></PageWrapper>} />
+              <Route path="errors" element={<PageWrapper><Errors /></PageWrapper>} />
+              <Route path="edge-logs" element={<PageWrapper><EdgeLogs /></PageWrapper>} />
+              <Route path="latency" element={<PageWrapper><Latency /></PageWrapper>} />
+              <Route path="background-jobs" element={<PageWrapper><BackgroundJobs /></PageWrapper>} />
+              <Route path="admin-sessions" element={<PageWrapper><AdminSessions /></PageWrapper>} />
+              <Route path="security" element={<PageWrapper><Security /></PageWrapper>} />
               <Route path="settings" element={<PageWrapper><Settings /></PageWrapper>} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

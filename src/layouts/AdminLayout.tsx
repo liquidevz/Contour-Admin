@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 import {
   LayoutDashboard, Users, UserCheck, ShoppingBag, HandHeart,
   Flag, MessageSquare, Zap, ToggleLeft, Tag, Layers, BarChart3,
   ScrollText, Settings, LogOut, Menu, X, ChevronDown, Shield,
-  Activity, GitBranch, CloudDownload, Bell
+  Activity, GitBranch, CloudDownload, Bell, Sliders,
+  AlertTriangle, Terminal, UsersRound, Inbox, Gauge, Cog, KeyRound
 } from 'lucide-react';
 
 const navSections = [
@@ -35,6 +37,7 @@ const navSections = [
     items: [
       { to: '/messages', icon: MessageSquare, label: 'Messages' },
       { to: '/notifications', icon: Bell, label: 'Notifications' },
+      { to: '/delivery-queue', icon: Inbox, label: 'Delivery Queue' },
     ]
   },
   {
@@ -42,6 +45,7 @@ const navSections = [
     items: [
       { to: '/match-analytics', icon: Zap, label: 'Match Engine' },
       { to: '/feature-flags', icon: ToggleLeft, label: 'Feature Flags' },
+      { to: '/remote-config', icon: Sliders, label: 'Remote Config' },
     ]
   },
   {
@@ -62,6 +66,15 @@ const navSections = [
     ]
   },
   {
+    label: 'Observability',
+    items: [
+      { to: '/errors', icon: AlertTriangle, label: 'Errors' },
+      { to: '/latency', icon: Gauge, label: 'Latency' },
+      { to: '/edge-logs', icon: Terminal, label: 'Edge Logs' },
+      { to: '/background-jobs', icon: Cog, label: 'Background Jobs' },
+    ]
+  },
+  {
     label: 'Releases',
     items: [
       { to: '/ota', icon: CloudDownload, label: 'OTA Releases' },
@@ -70,6 +83,8 @@ const navSections = [
   {
     label: 'System',
     items: [
+      { to: '/admin-sessions', icon: UsersRound, label: 'Admin Sessions' },
+      { to: '/security', icon: KeyRound, label: 'Security' },
       { to: '/settings', icon: Settings, label: 'Settings' },
     ]
   }
@@ -94,6 +109,23 @@ export default function AdminLayout() {
     await signOut();
     navigate('/login');
   };
+
+  // Heartbeat: refresh admin_sessions on mount, on visibility return,
+  // and every 5 minutes so the Sessions page reflects live presence.
+  useEffect(() => {
+    if (!user) return;
+    const touch = () => {
+      void supabase.rpc('admin_session_touch', { p_user_agent: navigator.userAgent });
+    };
+    touch();
+    const interval = window.setInterval(touch, 5 * 60_000);
+    const onVis = () => { if (document.visibilityState === 'visible') touch(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [user]);
 
   return (
     <div className="admin-layout">

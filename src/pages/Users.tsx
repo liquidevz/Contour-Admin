@@ -1,11 +1,18 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
-import { Search, Filter, Plus, Eye, Pencil, Ban, Trash2, X, UserPlus, AlertTriangle, Loader2 } from 'lucide-react';
+import { Search, Filter, Plus, Eye, Pencil, Ban, Trash2, X, UserPlus, AlertTriangle, Loader2, ChevronDown, CheckCircle2, XCircle, Clock, ShieldBan } from 'lucide-react';
 
 const PAGE_SIZE = 20;
 
 const DEFAULT_NEW_USER = { email: '', password: '', display_name: '', access_status: 'approved' };
+
+const STATUS_OPTIONS = [
+  { value: 'approved', label: 'Approved', icon: CheckCircle2, color: 'success' },
+  { value: 'pending', label: 'Pending', icon: Clock, color: 'warning' },
+  { value: 'rejected', label: 'Rejected', icon: XCircle, color: 'danger' },
+  { value: 'banned', label: 'Banned', icon: ShieldBan, color: 'danger' },
+];
 
 export default function UsersPage() {
   const [users, setUsers] = useState<any[]>([]);
@@ -29,6 +36,7 @@ export default function UsersPage() {
   const [editUser, setEditUser] = useState({ display_name: '', access_status: '', email: '' });
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -70,7 +78,7 @@ export default function UsersPage() {
   // ─── Actions ───────────────────────────────────────────────
   async function handleAddUser() {
     if (!newUser.email || !newUser.password) return;
-    setSaving(true); setActionError('');
+    setSaving(true); setActionError(''); setSuccessMessage('');
     const { error } = await supabase.rpc('admin_create_user', {
       user_email: newUser.email,
       user_password: newUser.password,
@@ -78,15 +86,22 @@ export default function UsersPage() {
       user_access_status: newUser.access_status,
     });
     setSaving(false);
-    if (error) { setActionError(error.message); return; }
-    setAddModal(false);
-    setNewUser({ ...DEFAULT_NEW_USER });
-    loadUsers();
+    if (error) { 
+      setActionError(error.message); 
+      return; 
+    }
+    setSuccessMessage(`User ${newUser.email} created successfully!`);
+    setTimeout(() => {
+      setAddModal(false);
+      setNewUser({ ...DEFAULT_NEW_USER });
+      setSuccessMessage('');
+      loadUsers();
+    }, 1500);
   }
 
   async function handleEditUser() {
     if (!editModal) return;
-    setSaving(true); setActionError('');
+    setSaving(true); setActionError(''); setSuccessMessage('');
     const { error } = await supabase.rpc('admin_update_user', {
       target_user_id: editModal.id,
       new_display_name: editUser.display_name || null,
@@ -94,46 +109,74 @@ export default function UsersPage() {
       new_email: editUser.email !== emails[editModal.id] ? editUser.email : null,
     });
     setSaving(false);
-    if (error) { setActionError(error.message); return; }
-    setEditModal(null);
-    loadUsers();
+    if (error) { 
+      setActionError(error.message); 
+      return; 
+    }
+    setSuccessMessage('User updated successfully!');
+    setTimeout(() => {
+      setEditModal(null);
+      setSuccessMessage('');
+      loadUsers();
+    }, 1500);
   }
 
   async function handleBanUser() {
     if (!banModal) return;
-    setSaving(true); setActionError('');
+    setSaving(true); setActionError(''); setSuccessMessage('');
     const { error } = await supabase.rpc('admin_ban_user', {
       target_user_id: banModal.id,
       ban_reason: 'Banned via admin panel',
     });
     setSaving(false);
-    if (error) { setActionError(error.message); return; }
-    setBanModal(null);
-    loadUsers();
+    if (error) { 
+      setActionError(error.message); 
+      return; 
+    }
+    setSuccessMessage('User banned successfully!');
+    setTimeout(() => {
+      setBanModal(null);
+      setSuccessMessage('');
+      loadUsers();
+    }, 1500);
   }
 
   async function handleHardDelete() {
     if (!deleteModal || deleteConfirmText !== 'DELETE') return;
-    setSaving(true); setActionError('');
+    setSaving(true); setActionError(''); setSuccessMessage('');
     const { error } = await supabase.rpc('admin_hard_delete_user', {
       target_user_id: deleteModal.id,
     });
     setSaving(false);
-    if (error) { setActionError(error.message); return; }
-    setDeleteModal(null);
-    setDeleteConfirmText('');
-    loadUsers();
+    if (error) { 
+      setActionError(error.message); 
+      return; 
+    }
+    setSuccessMessage('User permanently deleted!');
+    setTimeout(() => {
+      setDeleteModal(null);
+      setDeleteConfirmText('');
+      setSuccessMessage('');
+      loadUsers();
+    }, 1500);
   }
 
   function openEdit(u: any) {
     setEditModal(u);
     setEditUser({ display_name: u.display_name || '', access_status: u.access_status || '', email: emails[u.id] || '' });
     setActionError('');
+    setSuccessMessage('');
   }
 
   // ─── Status badge colour ────────────────────────────────────
   function statusClass(s: string) {
-    return s === 'approved' ? 'badge-success' : s === 'pending' ? 'badge-warning' : s === 'banned' ? 'badge-danger' : 'badge-default';
+    const option = STATUS_OPTIONS.find(opt => opt.value === s);
+    return option ? `badge-${option.color}` : 'badge-default';
+  }
+
+  function getStatusIcon(s: string) {
+    const option = STATUS_OPTIONS.find(opt => opt.value === s);
+    return option?.icon || Clock;
   }
 
   return (
@@ -163,15 +206,22 @@ export default function UsersPage() {
                 style={{ width: 280 }}
               />
             </div>
-            <div className="flex-center gap-sm">
+            <div className="filter-bar">
               <Filter size={14} style={{ color: 'var(--text-muted)' }} />
-              <select className="select-field" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}>
-                <option value="all">All Statuses</option>
-                <option value="pending">Pending</option>
-                <option value="approved">Approved</option>
-                <option value="rejected">Rejected</option>
-                <option value="banned">Banned</option>
-              </select>
+              <div style={{ position: 'relative' }}>
+                <select 
+                  className="select-field" 
+                  value={statusFilter} 
+                  onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
+                  style={{ paddingRight: 36, minWidth: 160 }}
+                >
+                  <option value="all">All Statuses</option>
+                  {STATUS_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                <ChevronDown size={14} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }} />
+              </div>
             </div>
           </div>
         </div>
@@ -212,7 +262,12 @@ export default function UsersPage() {
                         </div>
                       </td>
                       <td style={{ fontSize: '0.82rem' }}>{emails[user.id] || '—'}</td>
-                      <td><span className={`badge ${statusClass(user.access_status)}`}>{user.access_status}</span></td>
+                      <td><span className={`badge ${statusClass(user.access_status)}`}>
+                        {(() => {
+                          const Icon = getStatusIcon(user.access_status);
+                          return <><Icon size={12} style={{ marginRight: 4 }} />{user.access_status}</>;
+                        })()}
+                      </span></td>
                       <td>
                         <div className="flex-center gap-sm">
                           {user.is_complete ? <span className="badge badge-success">Complete</span> : <span className="badge badge-warning">Incomplete</span>}
@@ -296,18 +351,36 @@ export default function UsersPage() {
               </div>
               <div className="form-group">
                 <label className="form-label">Access Status</label>
-                <select className="select-field" value={newUser.access_status} onChange={e => setNewUser(p => ({ ...p, access_status: e.target.value }))}>
-                  <option value="approved">Approved</option>
-                  <option value="pending">Pending</option>
-                  <option value="rejected">Rejected</option>
-                </select>
+                <div style={{ position: 'relative' }}>
+                  <select 
+                    className="select-field" 
+                    value={newUser.access_status} 
+                    onChange={e => setNewUser(p => ({ ...p, access_status: e.target.value }))}
+                    style={{ paddingRight: 36 }}
+                  >
+                    {STATUS_OPTIONS.filter(opt => opt.value !== 'banned').map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={16} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }} />
+                </div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 6 }}>
+                  {newUser.access_status === 'approved' && '✓ User can access the app immediately'}
+                  {newUser.access_status === 'pending' && '⏳ User will need approval before accessing'}
+                  {newUser.access_status === 'rejected' && '✗ User will not be able to access the app'}
+                </p>
               </div>
               {actionError && <div className="auth-error" style={{ marginTop: 12 }}><AlertTriangle size={14} />{actionError}</div>}
+              {successMessage && (
+                <div style={{ marginTop: 12, padding: 10, borderRadius: 6, backgroundColor: 'var(--success-bg, #d4edda)', color: 'var(--success, #155724)', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', border: '1px solid var(--success, #28a745)' }}>
+                  <CheckCircle2 size={14} />{successMessage}
+                </div>
+              )}
             </div>
             <div className="modal-footer">
               <button className="btn btn-ghost" onClick={() => setAddModal(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleAddUser} disabled={saving || !newUser.email || !newUser.password}>
-                {saving ? <><Loader2 size={14} className="animate-spin" /> Creating...</> : 'Create User'}
+              <button className="btn btn-primary" onClick={handleAddUser} disabled={saving || !newUser.email || !newUser.password || !!successMessage}>
+                {saving ? <><Loader2 size={14} className="animate-spin" /> Creating...</> : successMessage ? <><CheckCircle2 size={14} /> Created!</> : 'Create User'}
               </button>
             </div>
           </div>
@@ -333,19 +406,58 @@ export default function UsersPage() {
               </div>
               <div className="form-group">
                 <label className="form-label">Access Status</label>
-                <select className="select-field" value={editUser.access_status} onChange={e => setEditUser(p => ({ ...p, access_status: e.target.value }))}>
-                  <option value="approved">Approved</option>
-                  <option value="pending">Pending</option>
-                  <option value="rejected">Rejected</option>
-                  <option value="banned">Banned</option>
-                </select>
+                <div style={{ position: 'relative' }}>
+                  <select 
+                    className="select-field" 
+                    value={editUser.access_status} 
+                    onChange={e => setEditUser(p => ({ ...p, access_status: e.target.value }))}
+                    style={{ paddingRight: 36 }}
+                  >
+                    {STATUS_OPTIONS.map(opt => {
+                      const Icon = opt.icon;
+                      return (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <ChevronDown size={16} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }} />
+                </div>
+                <div style={{ marginTop: 8, padding: 10, borderRadius: 6, backgroundColor: 'var(--bg-secondary)', fontSize: '0.8rem' }}>
+                  {editUser.access_status === 'approved' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--success)' }}>
+                      <CheckCircle2 size={14} /> User has full access to the app
+                    </div>
+                  )}
+                  {editUser.access_status === 'pending' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--warning)' }}>
+                      <Clock size={14} /> User is awaiting approval
+                    </div>
+                  )}
+                  {editUser.access_status === 'rejected' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--danger)' }}>
+                      <XCircle size={14} /> User cannot access the app
+                    </div>
+                  )}
+                  {editUser.access_status === 'banned' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--danger)' }}>
+                      <ShieldBan size={14} /> User is permanently banned
+                    </div>
+                  )}
+                </div>
               </div>
               {actionError && <div className="auth-error" style={{ marginTop: 12 }}><AlertTriangle size={14} />{actionError}</div>}
+              {successMessage && (
+                <div style={{ marginTop: 12, padding: 10, borderRadius: 6, backgroundColor: 'var(--success-bg, #d4edda)', color: 'var(--success, #155724)', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', border: '1px solid var(--success, #28a745)' }}>
+                  <CheckCircle2 size={14} />{successMessage}
+                </div>
+              )}
             </div>
             <div className="modal-footer">
               <button className="btn btn-ghost" onClick={() => setEditModal(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleEditUser} disabled={saving}>
-                {saving ? <><Loader2 size={14} className="animate-spin" /> Saving...</> : 'Save Changes'}
+              <button className="btn btn-primary" onClick={handleEditUser} disabled={saving || !!successMessage}>
+                {saving ? <><Loader2 size={14} className="animate-spin" /> Saving...</> : successMessage ? <><CheckCircle2 size={14} /> Saved!</> : 'Save Changes'}
               </button>
             </div>
           </div>
@@ -369,11 +481,16 @@ export default function UsersPage() {
                 </p>
               </div>
               {actionError && <div className="auth-error" style={{ marginTop: 12 }}><AlertTriangle size={14} />{actionError}</div>}
+              {successMessage && (
+                <div style={{ marginTop: 12, padding: 10, borderRadius: 6, backgroundColor: 'var(--success-bg, #d4edda)', color: 'var(--success, #155724)', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', border: '1px solid var(--success, #28a745)' }}>
+                  <CheckCircle2 size={14} />{successMessage}
+                </div>
+              )}
             </div>
             <div className="modal-footer">
               <button className="btn btn-ghost" onClick={() => setBanModal(null)}>Cancel</button>
-              <button className="btn btn-warning" onClick={handleBanUser} disabled={saving}>
-                {saving ? <><Loader2 size={14} className="animate-spin" /> Banning...</> : 'Yes, Ban User'}
+              <button className="btn btn-warning" onClick={handleBanUser} disabled={saving || !!successMessage}>
+                {saving ? <><Loader2 size={14} className="animate-spin" /> Banning...</> : successMessage ? <><CheckCircle2 size={14} /> Banned!</> : 'Yes, Ban User'}
               </button>
             </div>
           </div>
@@ -409,15 +526,20 @@ export default function UsersPage() {
                 </div>
               </div>
               {actionError && <div className="auth-error" style={{ marginTop: 12 }}><AlertTriangle size={14} />{actionError}</div>}
+              {successMessage && (
+                <div style={{ marginTop: 12, padding: 10, borderRadius: 6, backgroundColor: 'var(--success-bg, #d4edda)', color: 'var(--success, #155724)', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', border: '1px solid var(--success, #28a745)' }}>
+                  <CheckCircle2 size={14} />{successMessage}
+                </div>
+              )}
             </div>
             <div className="modal-footer">
               <button className="btn btn-ghost" onClick={() => setDeleteModal(null)}>Cancel</button>
               <button
                 className="btn btn-danger"
                 onClick={handleHardDelete}
-                disabled={saving || deleteConfirmText !== 'DELETE'}
+                disabled={saving || deleteConfirmText !== 'DELETE' || !!successMessage}
               >
-                {saving ? <><Loader2 size={14} className="animate-spin" /> Deleting...</> : 'Permanently Delete'}
+                {saving ? <><Loader2 size={14} className="animate-spin" /> Deleting...</> : successMessage ? <><CheckCircle2 size={14} /> Deleted!</> : 'Permanently Delete'}
               </button>
             </div>
           </div>

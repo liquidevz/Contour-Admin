@@ -1,14 +1,19 @@
 import { useAuth } from '../context/AuthContext';
 import { Navigate } from 'react-router-dom';
-import { Shield, Mail, Lock, AlertCircle, Loader2, RefreshCw } from 'lucide-react';
+import { Shield, Mail, Lock, AlertCircle, Loader2, RefreshCw, KeyRound } from 'lucide-react';
 import { isConfigured } from '../lib/supabase';
 import { useState } from 'react';
 
 export default function Login() {
-  const { user, role, loading, signInWithEmail, signOut, error: authError, refreshRole } = useAuth();
+  const {
+    user, role, loading, signInWithEmail, signOut, error: authError, refreshRole,
+    mfaRequired, verifyMfa, cancelMfa,
+  } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [localLoading, setLocalLoading] = useState(false);
+  const [otp, setOtp] = useState('');
+  const [mfaLoading, setMfaLoading] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,8 +51,81 @@ export default function Login() {
     );
   }
 
+  // MFA challenge pending — gate the role lookup behind a TOTP code.
+  // The user is signed in at AAL1; we won't let them past this screen
+  // until they elevate to AAL2.
+  if (user && mfaRequired) {
+    const submitMfa = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!otp || otp.length < 6) return;
+      setMfaLoading(true);
+      await verifyMfa(otp.trim());
+      setMfaLoading(false);
+      setOtp('');
+    };
+    return (
+      <div className="login-page">
+        <div className="login-card">
+          <div className="login-logo"><KeyRound size={28} /></div>
+          <h1>Two-factor verification</h1>
+          <p>Enter the 6-digit code from your authenticator app.</p>
+
+          <form onSubmit={submitMfa} className="login-form">
+            <div className="form-group">
+              <label className="form-label">Authentication code</label>
+              <div className="input-with-icon">
+                <KeyRound size={18} className="input-icon" />
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="123 456"
+                  value={otp}
+                  onChange={e => setOtp(e.target.value.replace(/\s/g, ''))}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  maxLength={8}
+                  style={{ fontFamily: 'monospace', letterSpacing: 4, fontSize: 18 }}
+                />
+              </div>
+            </div>
+
+            {authError && (
+              <div className="auth-error" style={{ marginTop: 12 }}>
+                <AlertCircle size={15} />
+                <span>{authError}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="btn btn-primary login-submit"
+              disabled={mfaLoading || otp.length < 6}
+              style={{ marginTop: 24, width: '100%' }}
+            >
+              {mfaLoading
+                ? <><Loader2 size={16} className="animate-spin" /> Verifying…</>
+                : 'Verify'}
+            </button>
+            <button
+              type="button"
+              onClick={cancelMfa}
+              style={{
+                marginTop: 12, width: '100%',
+                background: 'transparent', border: 'none',
+                color: 'var(--text-muted)', fontSize: '0.85rem', cursor: 'pointer',
+              }}
+            >
+              Cancel sign-in
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   // Logged in with a valid admin role → go to dashboard
-  if (user && role && ['admin', 'superadmin', 'analyst'].includes(role)) {
+  if (user && role && ['admin', 'superadmin', 'analyst', 'moderator', 'release_manager', 'support'].includes(role)) {
     return <Navigate to="/dashboard" replace />;
   }
 
