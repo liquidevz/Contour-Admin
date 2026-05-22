@@ -7,7 +7,8 @@ import {
   Flag, MessageSquare, Zap, ToggleLeft, Tag, Layers, BarChart3,
   ScrollText, Settings, LogOut, Menu, X, ChevronDown, Shield,
   Activity, GitBranch, CloudDownload, Bell, Sliders,
-  AlertTriangle, Terminal, UsersRound, Inbox, Gauge, Cog, KeyRound
+  AlertTriangle, Terminal, UsersRound, Inbox, Gauge, Cog, KeyRound,
+  SlidersHorizontal
 } from 'lucide-react';
 
 const navSections = [
@@ -43,7 +44,8 @@ const navSections = [
   {
     label: 'Intelligence',
     items: [
-      { to: '/match-analytics', icon: Zap, label: 'Match Engine' },
+      { to: '/match-analytics', icon: Zap, label: 'Match Analytics' },
+      { to: '/match-engine', icon: SlidersHorizontal, label: 'Match Engine' },
       { to: '/feature-flags', icon: ToggleLeft, label: 'Feature Flags' },
       { to: '/remote-config', icon: Sliders, label: 'Remote Config' },
     ]

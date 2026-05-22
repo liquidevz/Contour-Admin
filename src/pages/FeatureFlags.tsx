@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { ToggleLeft, Plus, Trash2, X } from 'lucide-react';
+import { ToggleLeft, Plus, Trash2, X, SlidersHorizontal, ExternalLink } from 'lucide-react';
+
+interface MatchEngineFlag {
+  feature_flag: number;
+  cohort_pct: number;
+  engine_version: string | null;
+}
 
 export default function FeatureFlags() {
   const [flags, setFlags] = useState<any[]>([]);
+  const [matchFlag, setMatchFlag] = useState<MatchEngineFlag | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [newFlag, setNewFlag] = useState({ key: '', description: '', rollout_percentage: 100 });
@@ -11,10 +19,21 @@ export default function FeatureFlags() {
   useEffect(() => { loadFlags(); }, []);
 
   async function loadFlags() {
-    const { data } = await supabase.from('feature_flags')
-      .select('*, feature_flag_overrides(id, user_id)')
-      .order('created_at', { ascending: false });
-    setFlags(data || []);
+    const [flagsRes, configRes] = await Promise.all([
+      supabase.from('feature_flags')
+        .select('*, feature_flag_overrides(id, user_id)')
+        .order('created_at', { ascending: false }),
+      supabase.rpc('admin_get_algo_config'),
+    ]);
+    setFlags(flagsRes.data || []);
+    if (!configRes.error && Array.isArray(configRes.data)) {
+      const byKey = Object.fromEntries(configRes.data.map((r: any) => [r.key, r]));
+      setMatchFlag({
+        feature_flag: Number(byKey.feature_flag?.value_num ?? 0),
+        cohort_pct:   Number(byKey.cohort_pct?.value_num ?? 0),
+        engine_version: byKey.engine_version?.value_text ?? null,
+      });
+    }
     setLoading(false);
   }
 
@@ -67,6 +86,41 @@ export default function FeatureFlags() {
           </button>
         </div>
       </div>
+
+      {matchFlag && (
+        <div className="data-card" style={{
+          padding: 14, marginBottom: 16,
+          border: '1px solid rgba(99,102,241,0.35)',
+          background: 'rgba(99,102,241,0.08)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <SlidersHorizontal size={18} style={{ color: '#818cf8' }} />
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+                Match Engine — Bidirectional (mirrored from match_algo_config)
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                {matchFlag.engine_version || '—'} · this flag is owned by the Match Engine page (canonical editor).
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>State</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: matchFlag.feature_flag ? '#14B8A6' : 'var(--text-muted)' }}>
+                  {matchFlag.feature_flag ? 'enabled' : 'disabled'}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Cohort</div>
+                <div style={{ fontSize: 14, fontWeight: 700 }}>{matchFlag.cohort_pct}%</div>
+              </div>
+              <Link to="/match-engine" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none' }}>
+                Open Match Engine <ExternalLink size={12} />
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showCreate && (
         <div className="modal-overlay" onClick={() => setShowCreate(false)}>

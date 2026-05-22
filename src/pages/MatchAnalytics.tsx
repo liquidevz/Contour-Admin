@@ -1,21 +1,61 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Zap, TrendingUp, ThumbsUp, ThumbsDown, Eye, MinusCircle } from 'lucide-react';
+import {
+  Zap, TrendingUp, ThumbsUp, ThumbsDown, Eye, MinusCircle,
+  Scale, Users, Sparkles
+} from 'lucide-react';
+
+/**
+ * Match Engine Analytics
+ *
+ * Original cards (feedback breakdown, score analysis, usage trend) +
+ * three new patent-effect cards backed by migration 046:
+ *   1. Asymmetry reduction  — mean |s_ij − s_ji| over recent top-K results
+ *   2. Personalization coverage — % of users with non-empty δ_u + mean |δ|
+ *   3. Engine latency / rare-tag recall — Stage B technical effect
+ *
+ * Screenshot these three cards at filing time → Exhibit B.
+ */
+
+interface EngineMetrics {
+  runs: number;
+  latency_p50: number | null;
+  latency_p99: number | null;
+  avg_candidates: number | null;
+  mean_asymmetry: number | null;
+  mean_rare_tag_recall: number | null;
+  personalization: {
+    total_active_users: number;
+    users_with_delta: number;
+    coverage_pct: number;
+    mean_abs_delta: number;
+  };
+  corpora: {
+    offer_tokens: number;
+    want_tokens: number;
+    offer_last_built: string | null;
+    want_last_built: string | null;
+  };
+}
 
 export default function MatchAnalytics() {
   const [usage, setUsage] = useState<any[]>([]);
   const [feedback, setFeedback] = useState<any>(null);
+  const [engine, setEngine] = useState<EngineMetrics | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => { loadData(); }, []);
 
   async function loadData() {
-    const [usageRes, feedbackRes] = await Promise.all([
+    const [usageRes, feedbackRes, engineRes] = await Promise.all([
       supabase.rpc('admin_get_match_usage', { days_back: 30 }),
       supabase.rpc('admin_get_match_feedback_stats'),
+      supabase.rpc('admin_get_match_engine_metrics', { p_days_back: 7 }),
     ]);
     setUsage(usageRes.data || []);
     setFeedback(feedbackRes.data);
+    // engineRes may fail if migration 046 hasn't been applied yet — degrade gracefully.
+    if (!engineRes.error) setEngine(engineRes.data as EngineMetrics);
     setLoading(false);
   }
 
@@ -35,7 +75,7 @@ export default function MatchAnalytics() {
     <div>
       <div className="page-header">
         <h1>Match Engine Analytics</h1>
-        <p>Match engine usage trends and feedback breakdown</p>
+        <p>Match engine usage trends, feedback breakdown, and patent-effect metrics.</p>
       </div>
 
       <div className="stats-grid">
@@ -49,6 +89,49 @@ export default function MatchAnalytics() {
           </div>
         ))}
       </div>
+
+      {/* ── Patent-effect cards (migration 046) ── */}
+      {engine && (
+        <>
+          <div className="section-header" style={{ marginTop: 24, marginBottom: 12 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Bidirectional Engine — Technical Effects</h2>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
+              Last 7 days · backing data for the patent claims. Screenshot these for Exhibit B.
+            </p>
+          </div>
+
+          <div className="stats-grid" style={{ marginBottom: 24 }}>
+            <PatentCard
+              icon={Scale}
+              label="Mean asymmetry"
+              value={engine.mean_asymmetry != null ? Number(engine.mean_asymmetry).toFixed(3) : '—'}
+              hint="|s_ij − s_ji| over top-K. Lower = more reciprocal matches (Stage A)."
+              color="teal"
+            />
+            <PatentCard
+              icon={Users}
+              label="Personalization coverage"
+              value={`${engine.personalization.coverage_pct ?? 0}%`}
+              hint={`${engine.personalization.users_with_delta}/${engine.personalization.total_active_users} users have δ_u. Mean |δ| = ${engine.personalization.mean_abs_delta ?? 0} (Stage C).`}
+              color="purple"
+            />
+            <PatentCard
+              icon={Sparkles}
+              label="Rare-tag recall"
+              value={engine.mean_rare_tag_recall != null ? Number(engine.mean_rare_tag_recall).toFixed(3) : '—'}
+              hint="Recall@10 for tokens with df < τ. Hierarchical IDF effect (Stage B)."
+              color="amber"
+            />
+            <PatentCard
+              icon={Zap}
+              label="Engine latency"
+              value={engine.latency_p50 != null ? `${Math.round(Number(engine.latency_p50))}ms / ${Math.round(Number(engine.latency_p99 ?? 0))}ms` : '—'}
+              hint={`p50 / p99 over ${engine.runs} runs. Avg ${engine.avg_candidates ?? '—'} candidates per run.`}
+              color="blue"
+            />
+          </div>
+        </>
+      )}
 
       <div className="two-col-grid">
         <div className="data-card" style={{ padding: 22 }}>
@@ -118,6 +201,21 @@ export default function MatchAnalytics() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function PatentCard({ icon: Icon, label, value, hint, color }: {
+  icon: any; label: string; value: string; hint: string; color: string;
+}) {
+  return (
+    <div className="stat-card" style={{ position: 'relative' }}>
+      <div className="stat-card-header">
+        <span className="stat-card-label">{label}</span>
+        <div className={`stat-card-icon ${color}`}><Icon size={18} /></div>
+      </div>
+      <div className="stat-card-value">{value}</div>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.4 }}>{hint}</div>
     </div>
   );
 }

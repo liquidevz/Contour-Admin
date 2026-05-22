@@ -1,17 +1,28 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Plus, Trash2, X, Layers } from 'lucide-react';
+import { Plus, Trash2, X, Layers, BarChart3, RefreshCw } from 'lucide-react';
+
+interface IdfDomainRow {
+  domain: string;
+  token_count: number;
+  avg_idf: number;
+  max_idf: number;
+}
 
 export default function Ontology() {
-  const [activeTab, setActiveTab] = useState<'skills' | 'siblings'>('skills');
+  const [activeTab, setActiveTab] = useState<'skills' | 'siblings' | 'idf'>('skills');
   const [skills, setSkills] = useState<any[]>([]);
   const [siblings, setSiblings] = useState<any[]>([]);
+  const [idfSide, setIdfSide] = useState<'offer' | 'want'>('offer');
+  const [idfRows, setIdfRows] = useState<IdfDomainRow[]>([]);
+  const [idfLoading, setIdfLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [newSkill, setNewSkill] = useState({ term: '', synonyms: '', parent_domain: '' });
   const [newSibling, setNewSibling] = useState({ category_a: '', category_b: '', similarity: 0.8 });
 
   useEffect(() => { loadAll(); }, []);
+  useEffect(() => { if (activeTab === 'idf') void loadIdf(); /* eslint-disable-next-line */ }, [activeTab, idfSide]);
 
   async function loadAll() {
     const [s, sib] = await Promise.all([
@@ -21,6 +32,13 @@ export default function Ontology() {
     setSkills(s.data || []);
     setSiblings(sib.data || []);
     setLoading(false);
+  }
+
+  async function loadIdf() {
+    setIdfLoading(true);
+    const { data } = await supabase.rpc('admin_get_idf_domain_rollup', { p_side: idfSide });
+    setIdfRows((data as IdfDomainRow[]) || []);
+    setIdfLoading(false);
   }
 
   async function createItem() {
@@ -61,9 +79,11 @@ export default function Ontology() {
             <h1>Ontology</h1>
             <p>Manage skill synonyms and category relationships</p>
           </div>
-          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
-            <Plus size={16} /> Add {activeTab === 'skills' ? 'Skill' : 'Sibling'}
-          </button>
+          {activeTab !== 'idf' && (
+            <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+              <Plus size={16} /> Add {activeTab === 'skills' ? 'Skill' : 'Sibling'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -73,6 +93,9 @@ export default function Ontology() {
         </button>
         <button className={`tab-btn ${activeTab === 'siblings' ? 'active' : ''}`} onClick={() => setActiveTab('siblings')}>
           Category Siblings ({siblings.length})
+        </button>
+        <button className={`tab-btn ${activeTab === 'idf' ? 'active' : ''}`} onClick={() => setActiveTab('idf')}>
+          <BarChart3 size={14} /> IDF Stats
         </button>
       </div>
 
@@ -124,6 +147,49 @@ export default function Ontology() {
         </div>
       )}
 
+      {activeTab === 'idf' ? (
+        <div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14 }}>
+            <select className="input-field" value={idfSide} onChange={e => setIdfSide(e.target.value as 'offer' | 'want')}
+                    style={{ width: 180, padding: '6px 10px' }}>
+              <option value="offer">Offer corpus</option>
+              <option value="want">Want corpus</option>
+            </select>
+            <button className="btn btn-ghost" onClick={() => void loadIdf()}>
+              <RefreshCw size={14} /> Refresh
+            </button>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Per-domain rollup over the cached IDF table. Use this to spot the downstream effect of ontology edits before committing.
+            </span>
+          </div>
+          <div className="data-card">
+            {idfLoading ? <div className="loading-state"><div className="spinner" /></div>
+              : idfRows.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-state-icon"><BarChart3 size={24} /></div>
+                  <h3>No IDF data</h3>
+                  <p>The corpus cache is empty. Visit Match Engine → Corpus and click "Rebuild IDF now".</p>
+                </div>
+              ) : (
+                <div className="data-table-wrap">
+                  <table className="data-table">
+                    <thead><tr><th>Domain</th><th>Tokens</th><th>Avg IDF</th><th>Max IDF</th></tr></thead>
+                    <tbody>
+                      {idfRows.map(r => (
+                        <tr key={r.domain}>
+                          <td style={{ fontWeight: 600 }}>{r.domain}</td>
+                          <td>{r.token_count}</td>
+                          <td>{Number(r.avg_idf).toFixed(3)}</td>
+                          <td>{Number(r.max_idf).toFixed(3)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+          </div>
+        </div>
+      ) : (
       <div className="data-card">
         {activeTab === 'skills' ? (
           skills.length === 0 ? (
@@ -197,6 +263,7 @@ export default function Ontology() {
           )
         )}
       </div>
+      )}
     </div>
   );
 }

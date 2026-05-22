@@ -13,6 +13,7 @@ import Listings from './pages/Listings';
 import Reports from './pages/Reports';
 import Messages from './pages/Messages';
 import MatchAnalytics from './pages/MatchAnalytics';
+import MatchEngine from './pages/MatchEngine';
 import FeatureFlags from './pages/FeatureFlags';
 import Categories from './pages/Categories';
 import Tags from './pages/Tags';
@@ -85,6 +86,7 @@ export default function App() {
               <Route path="reports" element={<PageWrapper><Reports /></PageWrapper>} />
               <Route path="messages" element={<PageWrapper><Messages /></PageWrapper>} />
               <Route path="match-analytics" element={<PageWrapper><MatchAnalytics /></PageWrapper>} />
+              <Route path="match-engine" element={<PageWrapper><MatchEngine /></PageWrapper>} />
               <Route path="feature-flags" element={<PageWrapper><FeatureFlags /></PageWrapper>} />
               <Route path="remote-config" element={<PageWrapper><RemoteConfig /></PageWrapper>} />
               <Route path="categories" element={<PageWrapper><Categories /></PageWrapper>} />
