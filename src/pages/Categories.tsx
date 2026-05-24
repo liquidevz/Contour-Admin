@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Plus, Trash2, Edit2, X, ChevronRight, ChevronDown, Layers } from 'lucide-react';
+import Page from '../components/ui/Page';
 
 export default function Categories() {
   const [categories, setCategories] = useState<any[]>([]);
@@ -79,18 +80,16 @@ export default function Categories() {
   if (loading) return <div className="loading-state"><div className="spinner" /></div>;
 
   return (
-    <div>
-      <div className="page-header">
-        <div className="page-header-row">
-          <div>
-            <h1>Categories</h1>
-            <p>{categories.length} marketplace categories</p>
-          </div>
-          <button className="btn btn-primary" onClick={() => { setShowModal('category'); setModalParentId(''); }}>
-            <Plus size={16} /> Add Category
-          </button>
-        </div>
-      </div>
+    <Page
+      title="Categories"
+      subtitle={`${categories.length} marketplace categories. These power the dropdown when people post offers or wants — keep this list short and intuitive.`}
+      icon={<Layers size={20} />}
+      actions={
+        <button className="btn btn-primary" onClick={() => { setShowModal('category'); setModalParentId(''); }}>
+          <Plus size={16} /> Add Category
+        </button>
+      }
+    >
 
       {/* Create/Edit Modal */}
       {(showModal || editing) && (
@@ -246,6 +245,6 @@ export default function Categories() {
           })}
         </div>
       )}
-    </div>
+    </Page>
   );
 }

@@ -11,6 +11,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Cog, RefreshCw, CheckCircle2, AlertTriangle, Pause } from 'lucide-react';
+import Page from '../components/ui/Page';
 
 interface Job {
   jobid:         number;
@@ -46,18 +47,16 @@ export default function BackgroundJobs() {
   }, {} as Record<string, number>);
 
   return (
-    <div>
-      <div className="page-header">
-        <div className="page-header-row">
-          <div>
-            <h1><Cog size={22} style={{ verticalAlign: 'middle', marginRight: 8 }} /> Background Jobs</h1>
-            <p>pg_cron jobs and their last run. Recommended cadence is in migration 031 §5.</p>
-          </div>
-          <button className="btn btn-ghost" onClick={() => void load()}>
-            <RefreshCw size={14} /> Refresh
-          </button>
-        </div>
-      </div>
+    <Page
+      title="Background Jobs"
+      subtitle="Scheduled jobs running on the database. Failed jobs are usually the first sign of something to investigate."
+      icon={<Cog size={20} />}
+      actions={
+        <button className="btn btn-ghost" onClick={() => void load()}>
+          <RefreshCw size={14} /> Refresh
+        </button>
+      }
+    >
 
       {/* Status strip */}
       <div style={{
@@ -143,7 +142,7 @@ export default function BackgroundJobs() {
               </div>
             )}
       </div>
-    </div>
+    </Page>
   );
 }
 

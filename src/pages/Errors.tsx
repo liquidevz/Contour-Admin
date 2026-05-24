@@ -12,6 +12,7 @@ import { supabase } from '../lib/supabase';
 import {
   AlertTriangle, RefreshCw, X, ChevronRight, Users, Clock,
 } from 'lucide-react';
+import Page from '../components/ui/Page';
 
 interface ErrorGroup {
   error_name:     string;
@@ -55,35 +56,24 @@ export default function Errors() {
   useEffect(() => { void load(); /* eslint-disable-next-line */ }, [days]);
 
   return (
-    <div>
-      <div className="page-header">
-        <div className="page-header-row">
-          <div>
-            <h1>
-              <AlertTriangle size={22} style={{ verticalAlign: 'middle', marginRight: 8 }} />
-              Errors
-            </h1>
-            <p>Grouped app errors over the selected window. Click a row to inspect occurrences.</p>
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <select value={days} onChange={e => setDays(Number(e.target.value))}
-              style={{
-                padding: '8px 12px', borderRadius: 6,
-                border: '1px solid var(--border, #2a2a35)',
-                background: 'var(--bg-secondary, #11111a)',
-                color: 'var(--text-primary, #fff)', fontSize: 13,
-              }}>
-              <option value={1}>Last 24h</option>
-              <option value={7}>Last 7 days</option>
-              <option value={30}>Last 30 days</option>
-              <option value={90}>Last 90 days</option>
-            </select>
-            <button className="btn btn-ghost" onClick={() => void load()}>
-              <RefreshCw size={14} /> Refresh
-            </button>
-          </div>
-        </div>
-      </div>
+    <Page
+      title="Errors"
+      subtitle="Crashes and silent failures from the mobile app, grouped by error name. Click any row to inspect individual occurrences and stack traces."
+      icon={<AlertTriangle size={20} />}
+      actions={
+        <>
+          <select value={days} onChange={e => setDays(Number(e.target.value))} className="select-field">
+            <option value={1}>Last 24h</option>
+            <option value={7}>Last 7 days</option>
+            <option value={30}>Last 30 days</option>
+            <option value={90}>Last 90 days</option>
+          </select>
+          <button className="btn btn-ghost" onClick={() => void load()}>
+            <RefreshCw size={14} /> Refresh
+          </button>
+        </>
+      }
+    >
 
       <div className="data-card">
         <div className="data-card-header">
@@ -137,7 +127,7 @@ export default function Errors() {
       {selected && (
         <OccurrencesModal group={selected} onClose={() => setSelected(null)} />
       )}
-    </div>
+    </Page>
   );
 }
 

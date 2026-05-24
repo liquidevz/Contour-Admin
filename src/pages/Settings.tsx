@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { Shield, Settings as SettingsIcon, Trash2, Plus, X, ChevronDown, ChevronUp, Search, Loader2, Save, Globe, Mail, Image } from 'lucide-react';
+import Page from '../components/ui/Page';
 
 // ─── Permission definitions covering ALL admin panel features ───────────────
 export const ALL_PERMISSIONS: { key: string; label: string; category: string }[] = [
@@ -63,12 +64,11 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<'general' | 'admins'>('general');
 
   return (
-    <div>
-      <div className="page-header">
-        <h1>Settings</h1>
-        <p>Manage general configuration and admin access</p>
-      </div>
-
+    <Page
+      title="Settings"
+      subtitle="Configure platform-wide options (branding, links, signup gates) and manage who else has admin access."
+      icon={<SettingsIcon size={20} />}
+    >
       <div className="tabs-bar" style={{ marginBottom: 24 }}>
         <button className={`tab-btn ${activeTab === 'general' ? 'active' : ''}`} onClick={() => setActiveTab('general')}>
           <SettingsIcon size={14} /> General
@@ -82,7 +82,7 @@ export default function SettingsPage() {
 
       {activeTab === 'general' && <GeneralSettings />}
       {activeTab === 'admins' && <AdminManagement />}
-    </div>
+    </Page>
   );
 }
 

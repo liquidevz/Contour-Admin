@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Plus, Trash2, X, Layers, BarChart3, RefreshCw } from 'lucide-react';
+import Page from '../components/ui/Page';
 
 interface IdfDomainRow {
   domain: string;
@@ -72,20 +73,19 @@ export default function Ontology() {
   if (loading) return <div className="loading-state"><div className="spinner" /></div>;
 
   return (
-    <div>
-      <div className="page-header">
-        <div className="page-header-row">
-          <div>
-            <h1>Ontology</h1>
-            <p>Manage skill synonyms and category relationships</p>
-          </div>
-          {activeTab !== 'idf' && (
-            <button className="btn btn-primary" onClick={() => setShowModal(true)}>
-              <Plus size={16} /> Add {activeTab === 'skills' ? 'Skill' : 'Sibling'}
-            </button>
-          )}
-        </div>
-      </div>
+    <Page
+      title="Ontology"
+      subtitle="The skill dictionary the match engine uses. 'Skills' lets you group synonyms under a canonical term; 'Siblings' lets two unrelated categories bridge a partial match."
+      icon={<Layers size={20} />}
+      requireRole={['admin', 'superadmin']}
+      actions={
+        activeTab !== 'idf' ? (
+          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+            <Plus size={16} /> Add {activeTab === 'skills' ? 'Skill' : 'Sibling'}
+          </button>
+        ) : undefined
+      }
+    >
 
       <div className="tabs-bar">
         <button className={`tab-btn ${activeTab === 'skills' ? 'active' : ''}`} onClick={() => setActiveTab('skills')}>
@@ -264,6 +264,6 @@ export default function Ontology() {
         )}
       </div>
       )}
-    </div>
+    </Page>
   );
 }

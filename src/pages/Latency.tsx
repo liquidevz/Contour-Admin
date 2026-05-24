@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Gauge, RefreshCw, AlertTriangle } from 'lucide-react';
+import Page from '../components/ui/Page';
 
 interface Row {
   endpoint:      string;
@@ -49,28 +50,25 @@ export default function Latency() {
   }, [rows]);
 
   return (
-    <div>
-      <div className="page-header">
-        <div className="page-header-row">
-          <div>
-            <h1><Gauge size={22} style={{ verticalAlign: 'middle', marginRight: 8 }} /> Latency</h1>
-            <p>P50/P95/P99 per endpoint. Source: <code>app_performance_logs</code>.</p>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {[1, 6, 24, 72, 168].map(h => (
-              <button key={h}
-                className={`tab-btn ${hours === h ? 'active' : ''}`}
-                onClick={() => setHours(h)}>
-                {h < 24 ? `${h}h` : `${Math.round(h/24)}d`}
-              </button>
-            ))}
-            <button className="btn btn-ghost" onClick={() => void load()}>
-              <RefreshCw size={14} /> Refresh
+    <Page
+      title="Latency"
+      subtitle="How fast each endpoint responds for our users. P95 and P99 are the experience of slow users — those are what to watch."
+      icon={<Gauge size={20} />}
+      actions={
+        <>
+          {[1, 6, 24, 72, 168].map(h => (
+            <button key={h}
+              className={`tab-btn ${hours === h ? 'active' : ''}`}
+              onClick={() => setHours(h)}>
+              {h < 24 ? `${h}h` : `${Math.round(h/24)}d`}
             </button>
-          </div>
-        </div>
-      </div>
-
+          ))}
+          <button className="btn btn-ghost" onClick={() => void load()}>
+            <RefreshCw size={14} /> Refresh
+          </button>
+        </>
+      }
+    >
       {/* Summary strip */}
       <div style={{
         display: 'grid', gap: 12, marginBottom: 16,
@@ -151,7 +149,7 @@ export default function Latency() {
               </div>
             )}
       </div>
-    </div>
+    </Page>
   );
 }
 

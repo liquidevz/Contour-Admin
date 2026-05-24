@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { MessageSquare, Trash2, Search } from 'lucide-react';
+import Page from '../components/ui/Page';
 
 const PAGE_SIZE = 30;
 
@@ -51,11 +52,12 @@ export default function Messages() {
   if (loading) return <div className="loading-state"><div className="spinner" /></div>;
 
   return (
-    <div>
-      <div className="page-header">
-        <h1>Messages</h1>
-        <p>{total} messages across the platform</p>
-      </div>
+    <Page
+      title="Messages"
+      subtitle={`${total} messages across the platform. Use sparingly — reading users' private messages is a sensitive action and is logged to the audit trail.`}
+      icon={<MessageSquare size={20} />}
+      requireRole={['admin', 'superadmin']}
+    >
 
       <div className="data-card">
         <div className="data-card-header">
@@ -139,6 +141,6 @@ export default function Messages() {
           </>
         )}
       </div>
-    </div>
+    </Page>
   );
 }

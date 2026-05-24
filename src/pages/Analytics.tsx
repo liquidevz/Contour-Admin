@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { AlertTriangle, Activity, Search as SearchIcon, TrendingUp } from 'lucide-react';
+import { AlertTriangle, Activity, Search as SearchIcon, TrendingUp, BarChart3 } from 'lucide-react';
+import Page from '../components/ui/Page';
 
 export default function Analytics() {
   const [activeTab, setActiveTab] = useState<'events' | 'errors' | 'performance' | 'search'>('events');
@@ -54,11 +55,11 @@ export default function Analytics() {
   ];
 
   return (
-    <div>
-      <div className="page-header">
-        <h1>Analytics</h1>
-        <p>Platform usage, errors, performance, and search analytics</p>
-      </div>
+    <Page
+      title="Analytics"
+      subtitle="Aggregate views over usage, errors, performance, and search. Switch tabs for the cut you care about."
+      icon={<BarChart3 size={20} />}
+    >
 
       <div className="tabs-bar">
         {tabs.map(t => (
@@ -240,6 +241,6 @@ export default function Analytics() {
           )}
         </div>
       )}
-    </div>
+    </Page>
   );
 }

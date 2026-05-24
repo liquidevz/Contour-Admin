@@ -5,6 +5,7 @@ import {
   Clock, MousePointerClick, Inbox, Smartphone, Sparkles, AlarmClock,
   Megaphone, Heart, Beaker, Eye, RotateCw, ChevronRight,
 } from 'lucide-react';
+import Page from '../components/ui/Page';
 
 interface Stats {
   window_days: number;
@@ -138,26 +139,22 @@ export default function Notifications() {
   }
 
   return (
-    <div>
-      <div className="page-header">
-        <div className="page-header-row">
-          <div>
-            <h1>
-              <Bell size={22} style={{ verticalAlign: 'middle', marginRight: 8 }} />
-              Notifications
-            </h1>
-            <p>Compose and broadcast push notifications. Rollout happens via the Edge Function worker.</p>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-ghost" onClick={() => void load()}>
-              <RefreshCw size={14} /> Refresh
-            </button>
-            <button className="btn btn-primary" onClick={() => setShowComposer(true)}>
-              <Plus size={16} /> New campaign
-            </button>
-          </div>
-        </div>
-      </div>
+    <Page
+      title="Notifications"
+      subtitle="Compose and broadcast push notifications. Each campaign is a one-shot message sent to a chosen audience — rollout runs in the background."
+      icon={<Bell size={20} />}
+      requireRole={['admin', 'superadmin']}
+      actions={
+        <>
+          <button className="btn btn-ghost" onClick={() => void load()}>
+            <RefreshCw size={14} /> Refresh
+          </button>
+          <button className="btn btn-primary" onClick={() => setShowComposer(true)}>
+            <Plus size={16} /> New campaign
+          </button>
+        </>
+      }
+    >
 
       {/* Stats */}
       {stats && (
@@ -278,7 +275,7 @@ export default function Notifications() {
           onClose={() => setDeliveriesFor(null)}
         />
       )}
-    </div>
+    </Page>
   );
 }
 

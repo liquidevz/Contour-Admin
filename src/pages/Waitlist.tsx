@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { UserCheck, UserX, CheckSquare, Search, Clock } from 'lucide-react';
+import Page from '../components/ui/Page';
 
 export default function Waitlist() {
   const [users, setUsers] = useState<any[]>([]);
@@ -73,22 +74,20 @@ export default function Waitlist() {
   if (loading) return <div className="loading-state"><div className="spinner" /></div>;
 
   return (
-    <div>
-      <div className="page-header">
-        <div className="page-header-row">
-          <div>
-            <h1>Waitlist</h1>
-            <p>{users.length} pending {users.length === 1 ? 'user' : 'users'} awaiting approval</p>
-          </div>
-          {selected.size > 0 && (
-            <button className="btn btn-success" onClick={bulkApprove} disabled={actionLoading === 'bulk'}>
-              <CheckSquare size={16} />
-              Approve Selected ({selected.size})
-            </button>
-          )}
-        </div>
-      </div>
-
+    <Page
+      title="Waitlist"
+      subtitle={`${users.length} pending ${users.length === 1 ? 'user' : 'users'} awaiting approval. Click a row to review the profile before deciding.`}
+      icon={<Clock size={20} />}
+      requireRole={['admin', 'superadmin']}
+      actions={
+        selected.size > 0 ? (
+          <button className="btn btn-success" onClick={bulkApprove} disabled={actionLoading === 'bulk'}>
+            <CheckSquare size={16} />
+            Approve Selected ({selected.size})
+          </button>
+        ) : undefined
+      }
+    >
       <div className="data-card">
         <div className="data-card-header">
           <div className="search-box">
@@ -186,6 +185,6 @@ export default function Waitlist() {
           </div>
         )}
       </div>
-    </div>
+    </Page>
   );
 }

@@ -1,7 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
-import { Search, Filter, Plus, Eye, Pencil, Ban, Trash2, X, UserPlus, AlertTriangle, Loader2, ChevronDown, CheckCircle2, XCircle, Clock, ShieldBan } from 'lucide-react';
+import { Search, Filter, Plus, Eye, Pencil, Ban, Trash2, X, UserPlus, AlertTriangle, Loader2, ChevronDown, CheckCircle2, XCircle, Clock, ShieldBan, Users as UsersIcon } from 'lucide-react';
+import Page from '../components/ui/Page';
+import MetricCard from '../components/ui/MetricCard';
+import MaskedValue from '../components/ui/MaskedValue';
+import RoleGate from '../components/ui/RoleGate';
 
 const PAGE_SIZE = 20;
 
@@ -179,20 +183,31 @@ export default function UsersPage() {
     return option?.icon || Clock;
   }
 
+  const approvedCount = users.filter((u: any) => u.access_status === 'approved').length;
+  const pendingCount  = users.filter((u: any) => u.access_status === 'pending').length;
+  const bannedCount   = users.filter((u: any) => u.access_status === 'banned').length;
+
   return (
-    <div>
-      <div className="page-header">
-        <div className="page-header-row">
-          <div>
-            <h1>All Users</h1>
-            <p>{total} total users across the platform</p>
-          </div>
+    <Page
+      title="All Users"
+      subtitle={`Everyone who has signed up to Contour. Search by name, username, or email — click any row to see the full profile and history.`}
+      icon={<UsersIcon size={20} />}
+      actions={
+        <RoleGate role={['admin', 'superadmin']}>
           <button className="btn btn-primary" onClick={() => { setAddModal(true); setActionError(''); }}>
             <UserPlus size={16} /> Add User
           </button>
+        </RoleGate>
+      }
+      hero={
+        <div className="metrics-row">
+          <MetricCard label="Total"     value={total}           icon={UsersIcon} compact />
+          <MetricCard label="Approved"  value={approvedCount}   icon={CheckCircle2} compact tone="success" />
+          <MetricCard label="Pending"   value={pendingCount}    icon={Clock}      compact tone="warning" />
+          <MetricCard label="Banned"    value={bannedCount}     icon={ShieldBan} compact tone="danger" />
         </div>
-      </div>
-
+      }
+    >
       <div className="data-card">
         <div className="data-card-header">
           <div className="filter-bar">
@@ -261,7 +276,14 @@ export default function UsersPage() {
                           </div>
                         </div>
                       </td>
-                      <td style={{ fontSize: '0.82rem' }}>{emails[user.id] || '—'}</td>
+                      <td style={{ fontSize: '0.82rem' }}>
+                        <MaskedValue
+                          value={emails[user.id]}
+                          kind="email"
+                          auditAction="reveal_user_email"
+                          auditMeta={{ user_id: user.id }}
+                        />
+                      </td>
                       <td><span className={`badge ${statusClass(user.access_status)}`}>
                         {(() => {
                           const Icon = getStatusIcon(user.access_status);
@@ -542,6 +564,6 @@ export default function UsersPage() {
           </div>
         </div>
       )}
-    </div>
+    </Page>
   );
 }

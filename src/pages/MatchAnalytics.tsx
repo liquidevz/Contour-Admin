@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import Page from '../components/ui/Page';
 import {
   Zap, TrendingUp, ThumbsUp, ThumbsDown, Eye, MinusCircle,
   Scale, Users, Sparkles
@@ -72,11 +73,11 @@ export default function MatchAnalytics() {
   ];
 
   return (
-    <div>
-      <div className="page-header">
-        <h1>Match Engine Analytics</h1>
-        <p>Match engine usage trends, feedback breakdown, and patent-effect metrics.</p>
-      </div>
+    <Page
+      title="Match Analytics"
+      subtitle="How the match engine is performing — acceptance vs. rejection, click-through, and the technical-effect metrics referenced in the patent disclosure."
+      icon={<Zap size={20} />}
+    >
 
       <div className="stats-grid">
         {feedbackCards.map(c => (
@@ -201,7 +202,7 @@ export default function MatchAnalytics() {
           )}
         </div>
       </div>
-    </div>
+    </Page>
   );
 }
 

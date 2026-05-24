@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { ToggleLeft, Plus, Trash2, X, SlidersHorizontal, ExternalLink } from 'lucide-react';
+import Page from '../components/ui/Page';
 
 interface MatchEngineFlag {
   feature_flag: number;
@@ -74,18 +75,17 @@ export default function FeatureFlags() {
   if (loading) return <div className="loading-state"><div className="spinner" /></div>;
 
   return (
-    <div>
-      <div className="page-header">
-        <div className="page-header-row">
-          <div>
-            <h1>Feature Flags</h1>
-            <p>{flags.length} feature flags configured</p>
-          </div>
-          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-            <Plus size={16} /> New Flag
-          </button>
-        </div>
-      </div>
+    <Page
+      title="Feature Flags"
+      subtitle={`${flags.length} feature flags configured. Each flag turns a feature on or off for some or all users without needing a redeploy — handy for staged rollouts and quick rollbacks.`}
+      icon={<ToggleLeft size={20} />}
+      requireRole={['admin', 'superadmin']}
+      actions={
+        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+          <Plus size={16} /> New Flag
+        </button>
+      }
+    >
 
       {matchFlag && (
         <div className="data-card" style={{
@@ -213,6 +213,6 @@ export default function FeatureFlags() {
           </div>
         )}
       </div>
-    </div>
+    </Page>
   );
 }

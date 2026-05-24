@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { GitBranch, Users, UserCheck, Sparkles, Award, Plus, X, Play } from 'lucide-react';
+import Page from '../components/ui/Page';
 
 interface FunnelData {
   window_days: number;
@@ -86,14 +87,11 @@ export default function OnboardingFunnel() {
   const totalBucketCount = buckets.reduce((s, b) => s + Number(b.user_count), 0);
 
   return (
-    <div>
-      <div className="page-header">
-        <h1>
-          <GitBranch size={22} style={{ verticalAlign: 'middle', marginRight: 8 }} />
-          Onboarding Funnel
-        </h1>
-        <p>Signup → tour → profile completion across your last {days} days.</p>
-      </div>
+    <Page
+      title="Onboarding Funnel"
+      subtitle={`How new users progress from signup to a complete profile across the last ${days} days. Big drop-offs are where to focus product work.`}
+      icon={<GitBranch size={20} />}
+    >
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         {[7, 14, 30, 60, 90].map((d) => (
@@ -275,7 +273,7 @@ export default function OnboardingFunnel() {
       )}
 
       <CustomFunnel days={days} />
-    </div>
+    </Page>
   );
 }
 

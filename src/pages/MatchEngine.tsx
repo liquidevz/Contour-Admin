@@ -15,6 +15,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import Page from '../components/ui/Page';
 import {
   SlidersHorizontal, RefreshCw, Save, Sparkles, Search,
   Activity, Database, FlaskConical, AlertCircle, CheckCircle2,
@@ -106,6 +107,14 @@ const PARAM_GROUPS: { group: string; subtitle: string; keys: { key: string; labe
       { key: 'top_k_default', label: 'Matches returned per request', min: 1, max: 50, step: 1 },
     ],
   },
+  {
+    group: 'Candidate-pool filters',
+    subtitle: 'Hide already-converted or already-rejected users from the People tab. Turn the chat filter off for demos against a small test set of accounts.',
+    keys: [
+      { key: 'exclude_existing_chats',      label: 'Hide users you already chat with', min: 0, max: 1,   step: 1 },
+      { key: 'exclude_recent_rejects_days', label: 'Days to suppress rejected users',  min: 0, max: 365, step: 1 },
+    ],
+  },
 ];
 
 export default function MatchEngine() {
@@ -113,22 +122,17 @@ export default function MatchEngine() {
   const [showHelp, setShowHelp] = useState(false);
 
   return (
-    <div>
-      <div className="page-header">
-        <div className="page-header-row">
-          <div>
-            <h1>
-              <SlidersHorizontal size={22} style={{ verticalAlign: 'middle', marginRight: 8 }} />
-              Match Engine
-            </h1>
-            <p>Live controls for the engine that ranks users on the mobile People tab.</p>
-          </div>
-          <button className="btn btn-ghost" onClick={() => setShowHelp(s => !s)}>
-            <Info size={14} /> {showHelp ? 'Hide help' : 'What is this?'}
-          </button>
-        </div>
-      </div>
-
+    <Page
+      title="Match Engine"
+      subtitle="Live controls for the engine that ranks users on the mobile People tab. Every change saves immediately — no redeploy."
+      icon={<SlidersHorizontal size={20} />}
+      requireRole={['admin', 'superadmin']}
+      actions={
+        <button className="btn btn-ghost" onClick={() => setShowHelp(s => !s)}>
+          <Info size={14} /> {showHelp ? 'Hide help' : 'What is this?'}
+        </button>
+      }
+    >
       {showHelp && (
         <div className="data-card" style={{ padding: 16, marginBottom: 14, borderColor: 'rgba(99,102,241,0.35)', background: 'rgba(99,102,241,0.06)' }}>
           <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--text-primary)' }}>
@@ -168,7 +172,7 @@ export default function MatchEngine() {
       {tab === 'corpus'    && <CorpusTab />}
       {tab === 'forensics' && <ForensicsTab />}
       {tab === 'runlog'    && <RunLogTab />}
-    </div>
+    </Page>
   );
 }
 

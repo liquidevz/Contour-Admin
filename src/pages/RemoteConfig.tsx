@@ -17,6 +17,7 @@ import {
   Sliders, RefreshCw, Plus, Trash2, Save, X, AlertTriangle, Lock,
   Power, Zap, RotateCcw,
 } from 'lucide-react';
+import Page from '../components/ui/Page';
 
 type ValueType = 'boolean' | 'number' | 'string' | 'json';
 
@@ -73,19 +74,18 @@ export default function RemoteConfig() {
   });
 
   return (
-    <div>
-      <div className="page-header">
-        <div className="page-header-row">
-          <div>
-            <h1><Sliders size={22} style={{ verticalAlign: 'middle', marginRight: 8 }} /> Remote Config</h1>
-            <p>Live runtime config. Devices refresh every 60s and on app foreground.</p>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-ghost" onClick={() => void load()}><RefreshCw size={14} /> Refresh</button>
-            <button className="btn btn-primary" onClick={() => setCreating(true)}><Plus size={16} /> New key</button>
-          </div>
-        </div>
-      </div>
+    <Page
+      title="Remote Config"
+      subtitle="Live runtime config for the mobile app. Reserved keys drive kill-switches (maintenance mode, force-update); devices pick up changes within ~60 seconds."
+      icon={<Sliders size={20} />}
+      requireRole={['admin', 'superadmin']}
+      actions={
+        <>
+          <button className="btn btn-ghost" onClick={() => void load()}><RefreshCw size={14} /> Refresh</button>
+          <button className="btn btn-primary" onClick={() => setCreating(true)}><Plus size={16} /> New key</button>
+        </>
+      }
+    >
 
       {/* Reserved keys hint */}
       <div style={{
@@ -157,7 +157,7 @@ export default function RemoteConfig() {
           onSaved={async () => { setEditor(null); setCreating(false); await load(); }}
         />
       )}
-    </div>
+    </Page>
   );
 }
 

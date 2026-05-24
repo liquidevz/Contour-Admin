@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Search, Power, Trash2, RotateCw, ExternalLink } from 'lucide-react';
+import { Search, Power, Trash2, RotateCw, ExternalLink, ShoppingBag, HandHeart } from 'lucide-react';
+import Page from '../components/ui/Page';
 
 const PAGE_SIZE = 20;
 
@@ -102,11 +103,11 @@ export default function ListingsPage({ type }: ListingPageProps) {
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
-    <div>
-      <div className="page-header">
-        <h1>{title}</h1>
-        <p>{total} total {title.toLowerCase()} in the marketplace</p>
-      </div>
+    <Page
+      title={title}
+      subtitle={`${total} total ${title.toLowerCase()} in the marketplace. Click "View" on any row to see the full listing in context.`}
+      icon={type === 'offer' ? <ShoppingBag size={20} /> : <HandHeart size={20} />}
+    >
 
       <div className="data-card">
         <div className="data-card-header">
@@ -222,6 +223,6 @@ export default function ListingsPage({ type }: ListingPageProps) {
           </>
         )}
       </div>
-    </div>
+    </Page>
   );
 }

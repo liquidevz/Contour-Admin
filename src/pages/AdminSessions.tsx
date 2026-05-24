@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Users, RefreshCw, Circle } from 'lucide-react';
+import Page from '../components/ui/Page';
 
 interface Session {
   id:          string;
@@ -43,29 +44,27 @@ export default function AdminSessions() {
     !s.ended_at && Date.now() - new Date(s.last_seen).getTime() < ACTIVE_WINDOW_MS;
 
   return (
-    <div>
-      <div className="page-header">
-        <div className="page-header-row">
-          <div>
-            <h1><Users size={22} style={{ verticalAlign: 'middle', marginRight: 8 }} /> Admin Sessions</h1>
-            <p>Live signal of who is operating the admin panel. Heartbeat every 5 minutes.</p>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              className={`tab-btn ${onlyActive ? 'active' : ''}`}
-              onClick={() => setOA(v => !v)}
-              style={{ display: 'flex', alignItems: 'center', gap: 6,
-                color: onlyActive ? '#14B8A6' : undefined,
-                borderColor: onlyActive ? '#14B8A6' : undefined }}>
-              <Circle size={10} fill={onlyActive ? '#14B8A6' : 'transparent'} /> Active only
-            </button>
-            <button className="btn btn-ghost" onClick={() => void load()}>
-              <RefreshCw size={14} /> Refresh
-            </button>
-          </div>
-        </div>
-      </div>
-
+    <Page
+      title="Admin Sessions"
+      subtitle="Who's currently signed into the admin panel. A heartbeat every 5 minutes keeps this list accurate."
+      icon={<Users size={20} />}
+      requireRole={['admin', 'superadmin']}
+      actions={
+        <>
+          <button
+            className={`tab-btn ${onlyActive ? 'active' : ''}`}
+            onClick={() => setOA(v => !v)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6,
+              color: onlyActive ? '#14B8A6' : undefined,
+              borderColor: onlyActive ? '#14B8A6' : undefined }}>
+            <Circle size={10} fill={onlyActive ? '#14B8A6' : 'transparent'} /> Active only
+          </button>
+          <button className="btn btn-ghost" onClick={() => void load()}>
+            <RefreshCw size={14} /> Refresh
+          </button>
+        </>
+      }
+    >
       <div className="data-card">
         <div className="data-card-header">
           <span className="data-card-title">Sessions</span>
@@ -125,6 +124,6 @@ export default function AdminSessions() {
             </div>
           )}
       </div>
-    </div>
+    </Page>
   );
 }

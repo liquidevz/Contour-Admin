@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Terminal, RefreshCw, AlertTriangle, Info, X } from 'lucide-react';
+import Page from '../components/ui/Page';
 
 type Level = 'debug' | 'info' | 'warn' | 'error';
 
@@ -47,18 +48,16 @@ export default function EdgeLogs() {
   const fns = Array.from(new Set(rows.map(r => r.fn))).sort();
 
   return (
-    <div>
-      <div className="page-header">
-        <div className="page-header-row">
-          <div>
-            <h1><Terminal size={22} style={{ verticalAlign: 'middle', marginRight: 8 }} /> Edge Logs</h1>
-            <p>Structured logs from Edge Functions (<code>log_edge()</code>).</p>
-          </div>
-          <button className="btn btn-ghost" onClick={() => void load()}>
-            <RefreshCw size={14} /> Refresh
-          </button>
-        </div>
-      </div>
+    <Page
+      title="Edge Logs"
+      subtitle="Server-side logs from our Edge Functions. Filter by function, level, or text to triage what the backend is doing."
+      icon={<Terminal size={20} />}
+      actions={
+        <button className="btn btn-ghost" onClick={() => void load()}>
+          <RefreshCw size={14} /> Refresh
+        </button>
+      }
+    >
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <select value={fn} onChange={e => setFn(e.target.value)} style={selectStyle}>
@@ -153,7 +152,7 @@ export default function EdgeLogs() {
           </div>
         </div>
       )}
-    </div>
+    </Page>
   );
 }
 

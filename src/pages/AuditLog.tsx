@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { ScrollText, Filter } from 'lucide-react';
+import Page from '../components/ui/Page';
 
 const PAGE_SIZE = 30;
 
@@ -50,11 +51,11 @@ export default function AuditLog() {
   };
 
   return (
-    <div>
-      <div className="page-header">
-        <h1>Audit Log</h1>
-        <p>Complete history of admin actions</p>
-      </div>
+    <Page
+      title="Audit Log"
+      subtitle="Every action an admin has taken on the platform — who did what, when. This page is read-only and tamper-resistant."
+      icon={<ScrollText size={20} />}
+    >
 
       <div className="data-card">
         <div className="data-card-header">
@@ -135,6 +136,6 @@ export default function AuditLog() {
           </>
         )}
       </div>
-    </div>
+    </Page>
   );
 }

@@ -13,6 +13,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Inbox, RefreshCw, RotateCw, AlertTriangle, Clock } from 'lucide-react';
+import Page from '../components/ui/Page';
 
 interface FailedRow {
   id:             string;
@@ -95,30 +96,27 @@ export default function DeliveryQueue() {
   }, [rows]);
 
   return (
-    <div>
-      <div className="page-header">
-        <div className="page-header-row">
-          <div>
-            <h1><Inbox size={22} style={{ verticalAlign: 'middle', marginRight: 8 }} /> Delivery Queue</h1>
-            <p>Cross-campaign view of failed pushes. Auto-retry runs via cron (<code>admin_retry_failed_deliveries</code>); use this page to force the issue.</p>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              className={`tab-btn ${readyOnly ? 'active' : ''}`}
-              onClick={() => setRO(v => !v)}
-              style={{ display: 'flex', alignItems: 'center', gap: 6,
-                color: readyOnly ? '#F59E0B' : undefined,
-                borderColor: readyOnly ? '#F59E0B' : undefined }}
-              title="Show only rows whose next_retry_at is in the past">
-              <Clock size={14} /> Ready to retry
-            </button>
-            <button className="btn btn-ghost" onClick={() => void load()}>
-              <RefreshCw size={14} /> Refresh
-            </button>
-          </div>
-        </div>
-      </div>
-
+    <Page
+      title="Delivery Queue"
+      subtitle="Push notifications that failed to deliver. Auto-retry runs on a cron — use this page to force a retry now or investigate what's stuck."
+      icon={<Inbox size={20} />}
+      actions={
+        <>
+          <button
+            className={`tab-btn ${readyOnly ? 'active' : ''}`}
+            onClick={() => setRO(v => !v)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6,
+              color: readyOnly ? '#F59E0B' : undefined,
+              borderColor: readyOnly ? '#F59E0B' : undefined }}
+            title="Show only rows whose next_retry_at is in the past">
+            <Clock size={14} /> Ready to retry
+          </button>
+          <button className="btn btn-ghost" onClick={() => void load()}>
+            <RefreshCw size={14} /> Refresh
+          </button>
+        </>
+      }
+    >
       {/* Triage strip */}
       {errorGroups.length > 0 && (
         <div style={{
@@ -228,6 +226,6 @@ export default function DeliveryQueue() {
               </div>
             )}
       </div>
-    </div>
+    </Page>
   );
 }

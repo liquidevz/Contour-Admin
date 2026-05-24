@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import {
@@ -8,8 +8,12 @@ import {
   ScrollText, Settings, LogOut, Menu, X, ChevronDown, Shield,
   Activity, GitBranch, CloudDownload, Bell, Sliders,
   AlertTriangle, Terminal, UsersRound, Inbox, Gauge, Cog, KeyRound,
-  SlidersHorizontal
+  SlidersHorizontal, Command,
 } from 'lucide-react';
+import CommandPalette, { useNavCommands } from '../components/ui/CommandPalette';
+import IdleTimeout from '../components/ui/IdleTimeout';
+import ImpersonationBanner from '../components/ui/ImpersonationBanner';
+import ToastHost from '../components/ui/Toast';
 
 const navSections = [
   {
@@ -44,10 +48,10 @@ const navSections = [
   {
     label: 'Intelligence',
     items: [
+      { to: '/match-engine',    icon: SlidersHorizontal, label: 'Match Engine' },
       { to: '/match-analytics', icon: Zap, label: 'Match Analytics' },
-      { to: '/match-engine', icon: SlidersHorizontal, label: 'Match Engine' },
-      { to: '/feature-flags', icon: ToggleLeft, label: 'Feature Flags' },
-      { to: '/remote-config', icon: Sliders, label: 'Remote Config' },
+      { to: '/feature-flags',   icon: ToggleLeft, label: 'Feature Flags' },
+      { to: '/remote-config',   icon: Sliders, label: 'Remote Config' },
     ]
   },
   {
@@ -97,6 +101,29 @@ export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const navCommands = useNavCommands(
+    navSections.map(s => ({ section: s.label, items: s.items }))
+  );
+  const paletteItems = useMemo(() => [
+    ...navCommands,
+    {
+      id: 'action:signout', label: 'Sign out', section: 'Actions',
+      keywords: ['logout', 'exit'],
+      action: async () => { await signOut(); navigate('/login'); },
+    },
+    {
+      id: 'action:rebuild-idf', label: 'Rebuild match-engine IDF', section: 'Actions',
+      keywords: ['recompute', 'index', 'corpus'],
+      action: async () => { await supabase.rpc('admin_rebuild_idf_now'); },
+    },
+    {
+      id: 'action:refresh-tags', label: 'Refresh tag usage counts', section: 'Actions',
+      keywords: ['recompute', 'tags', 'usage'],
+      action: async () => { await supabase.rpc('admin_refresh_tag_usage_counts'); },
+    },
+  ], [navCommands, signOut, navigate]);
 
   const toggleSection = (label: string) => {
     setCollapsedSections(prev => {
@@ -112,8 +139,10 @@ export default function AdminLayout() {
     navigate('/login');
   };
 
-  // Heartbeat: refresh admin_sessions on mount, on visibility return,
-  // and every 5 minutes so the Sessions page reflects live presence.
+  // Close mobile drawer on route change
+  useEffect(() => { setSidebarOpen(false); }, [location.pathname]);
+
+  // Heartbeat — keeps admin_sessions table fresh.
   useEffect(() => {
     if (!user) return;
     const touch = () => {
@@ -129,12 +158,17 @@ export default function AdminLayout() {
     };
   }, [user]);
 
+  // Open the command palette via the topbar pill — synthesize Ctrl+K
+  const openPalette = () => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
+  };
+
   return (
     <div className="admin-layout">
-      {/* Mobile overlay */}
+      <ImpersonationBanner />
+
       {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
 
-      {/* Sidebar */}
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
           <div className="logo-area">
@@ -146,17 +180,18 @@ export default function AdminLayout() {
               <span className="logo-subtitle">Admin Panel</span>
             </div>
           </div>
-          <button className="sidebar-close" onClick={() => setSidebarOpen(false)}>
+          <button className="sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close menu">
             <X size={20} />
           </button>
         </div>
 
-        <nav className="sidebar-nav">
+        <nav className="sidebar-nav" aria-label="Primary">
           {navSections.map(section => (
             <div className="nav-section" key={section.label}>
               <button
                 className="nav-section-title"
                 onClick={() => toggleSection(section.label)}
+                aria-expanded={!collapsedSections.has(section.label)}
               >
                 <span>{section.label}</span>
                 <ChevronDown
@@ -194,17 +229,26 @@ export default function AdminLayout() {
               <span className="user-role">{role || 'No role'}</span>
             </div>
           </div>
-          <button className="sign-out-btn" onClick={handleSignOut} title="Sign out">
+          <button className="sign-out-btn" onClick={handleSignOut} title="Sign out" aria-label="Sign out">
             <LogOut size={18} />
           </button>
         </div>
       </aside>
 
-      {/* Main Content */}
       <main className="main-content">
         <header className="top-bar">
-          <button className="menu-toggle" onClick={() => setSidebarOpen(true)}>
+          <button className="menu-toggle" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
             <Menu size={22} />
+          </button>
+          <button
+            type="button"
+            className="topbar-cmd-hint"
+            onClick={openPalette}
+            title="Open command palette"
+          >
+            <Command size={12} />
+            <span>Jump to…</span>
+            <kbd>⌘K</kbd>
           </button>
           <div className="top-bar-right">
             <div className="role-badge">{role}</div>
@@ -214,6 +258,11 @@ export default function AdminLayout() {
           <Outlet />
         </div>
       </main>
+
+      {/* Global primitives */}
+      <CommandPalette items={paletteItems} />
+      <IdleTimeout />
+      <ToastHost />
     </div>
   );
 }

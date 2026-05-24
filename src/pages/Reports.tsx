@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Flag, Check, Trash2 } from 'lucide-react';
+import Page from '../components/ui/Page';
 
 export default function Reports() {
   const [flags, setFlags] = useState<any[]>([]);
@@ -40,12 +41,12 @@ export default function Reports() {
   if (loading) return <div className="loading-state"><div className="spinner" /></div>;
 
   return (
-    <div>
-      <div className="page-header">
-        <h1>Reports</h1>
-        <p>{flags.length} flagged {flags.length === 1 ? 'listing' : 'listings'} pending review</p>
-      </div>
-
+    <Page
+        title="Reports"
+        subtitle={`${flags.length} flagged ${flags.length === 1 ? 'listing' : 'listings'} pending review. Each report is something a user found inappropriate — review the content, then approve or remove the listing.`}
+        icon={<Flag size={20} />}
+        requireRole={['admin', 'superadmin']}
+      >
       <div className="data-card">
         {flags.length === 0 ? (
           <div className="empty-state">
@@ -91,6 +92,6 @@ export default function Reports() {
           </div>
         )}
       </div>
-    </div>
+    </Page>
   );
 }

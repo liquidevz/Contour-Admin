@@ -1,10 +1,25 @@
+/**
+ * Dashboard — first impression for every admin.
+ *
+ * Layout:
+ *  1. Narrative subtitle  — tells the admin what they're looking at.
+ *  2. Live signals row    — realtime event / error / push pulse.
+ *  3. Hero metrics        — clickable click-throughs to detail pages.
+ *  4. Two-column footer   — Platform metrics + Recent signups.
+ */
+
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import {
-  Users, UserCheck, UserX, Clock, ShoppingBag, HandHeart,
-  MessageSquare, Zap, Activity, AlertTriangle, Flag, BarChart3
+  Users as UsersIcon, UserCheck, UserX, Clock, ShoppingBag, HandHeart,
+  MessageSquare, Zap, Activity, AlertTriangle, Flag, BarChart3,
+  LayoutDashboard, ArrowRight,
 } from 'lucide-react';
+import Page from '../components/ui/Page';
+import MetricCard from '../components/ui/MetricCard';
+import EmptyState from '../components/ui/EmptyState';
+import Help from '../components/ui/Help';
 
 interface DashboardStats {
   total_users: number;
@@ -35,7 +50,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, []);
 
   async function loadData() {
@@ -57,166 +72,160 @@ export default function Dashboard() {
     }
   }
 
-  if (loading) return <div className="loading-state"><div className="spinner" /></div>;
-
   const s = stats || {} as DashboardStats;
 
-  const statCards = [
-    { label: 'Total Users', value: s.total_users, icon: Users, color: 'purple', click: '/users' },
-    { label: 'Pending Waitlist', value: s.pending_users, icon: Clock, color: 'amber', click: '/waitlist' },
-    { label: 'Approved', value: s.approved_users, icon: UserCheck, color: 'green' },
-    { label: 'Rejected', value: s.rejected_users, icon: UserX, color: 'red' },
-    { label: 'Signups Today', value: s.signups_today, icon: Activity, color: 'blue' },
-    { label: 'This Week', value: s.signups_this_week, icon: BarChart3, color: 'purple' },
-    { label: 'Active Offers', value: s.active_offers, icon: ShoppingBag, color: 'green', click: '/offers' },
-    { label: 'Active Wants', value: s.active_wants, icon: HandHeart, color: 'blue', click: '/wants' },
-    { label: 'Messages', value: s.total_messages, icon: MessageSquare, color: 'purple', click: '/messages' },
-    { label: 'Match Runs', value: s.total_match_runs, icon: Zap, color: 'amber', click: '/match-analytics' },
-    { label: 'Flagged', value: s.flagged_listings, icon: Flag, color: 'red', click: '/reports' },
-    { label: 'Errors', value: s.total_errors, icon: AlertTriangle, color: 'red', click: '/analytics' },
-  ];
-
   return (
-    <div>
-      <div className="page-header">
-        <h1>Dashboard</h1>
-        <p>Platform overview and key metrics</p>
-      </div>
-
+    <Page
+      title="Dashboard"
+      subtitle="A live overview of who's signing up, what's being offered, and how the platform is performing. Click any tile to drill in."
+      icon={<LayoutDashboard size={20} />}
+    >
       <LiveSignals />
 
-      <div className="stats-grid">
-        {statCards.map((card) => (
-          <div
-            key={card.label}
-            className="stat-card"
-            style={{ cursor: card.click ? 'pointer' : 'default' }}
-            onClick={() => card.click && navigate(card.click)}
-          >
-            <div className="stat-card-header">
-              <span className="stat-card-label">{card.label}</span>
-              <div className={`stat-card-icon ${card.color}`}>
-                <card.icon size={18} />
-              </div>
-            </div>
-            <div className="stat-card-value">{card.value ?? 0}</div>
-          </div>
-        ))}
-      </div>
+      <section>
+        <SectionHeading
+          title="At a glance"
+          hint="Top-line counts across the platform. Each tile is a shortcut into the detail page."
+        />
+        <div className="metrics-row">
+          <MetricCard label="Total Users"        value={s.total_users}        icon={UsersIcon}    to="/users"            loading={loading} />
+          <MetricCard label="Pending Waitlist"   value={s.pending_users}      icon={Clock}        to="/waitlist"         tone="warning" loading={loading}
+                       help="People who signed up but haven't been approved yet." />
+          <MetricCard label="Approved"           value={s.approved_users}     icon={UserCheck}    tone="success"  loading={loading} />
+          <MetricCard label="Rejected"           value={s.rejected_users}     icon={UserX}        tone="danger"   loading={loading} />
+          <MetricCard label="Signups Today"      value={s.signups_today}      icon={Activity}     tone="info"     loading={loading} />
+          <MetricCard label="Signups This Week"  value={s.signups_this_week}  icon={BarChart3}    loading={loading} />
+        </div>
+      </section>
+
+      <section>
+        <SectionHeading
+          title="Marketplace activity"
+          hint="What users are listing and how they're talking to each other."
+        />
+        <div className="metrics-row">
+          <MetricCard label="Active Offers" value={s.active_offers} icon={ShoppingBag}  to="/offers"         tone="success" loading={loading} />
+          <MetricCard label="Active Wants"  value={s.active_wants}  icon={HandHeart}    to="/wants"          tone="info"    loading={loading} />
+          <MetricCard label="Messages"      value={s.total_messages} icon={MessageSquare} to="/messages"     loading={loading} />
+          <MetricCard label="Match Runs"    value={s.total_match_runs} icon={Zap}       to="/match-analytics" tone="warning" loading={loading}
+                       help="Every time the matching engine produced results for a user." />
+          <MetricCard label="Flagged"       value={s.flagged_listings} icon={Flag}     to="/reports"        tone="danger"  loading={loading} />
+          <MetricCard label="Errors"        value={s.total_errors}    icon={AlertTriangle} to="/errors"     tone="danger"  loading={loading} />
+        </div>
+      </section>
 
       <div className="two-col-grid">
-        {/* Quick Stats */}
         <div className="data-card">
           <div className="data-card-header">
-            <span className="data-card-title">Platform Metrics</span>
+            <span className="data-card-title">
+              Platform Metrics <Help text="Aggregate counts across the whole platform — historical totals, not just today." />
+            </span>
           </div>
           <div style={{ padding: '18px 22px' }}>
             <div className="detail-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-              <div className="detail-item">
-                <span className="detail-label">Complete Profiles</span>
-                <span className="detail-value">{s.complete_profiles ?? 0}</span>
-              </div>
-              <div className="detail-item">
-                <span className="detail-label">Public Profiles</span>
-                <span className="detail-value">{s.public_profiles ?? 0}</span>
-              </div>
-              <div className="detail-item">
-                <span className="detail-label">Total Contacts</span>
-                <span className="detail-value">{s.total_contacts ?? 0}</span>
-              </div>
-              <div className="detail-item">
-                <span className="detail-label">Total Tasks</span>
-                <span className="detail-value">{s.total_tasks ?? 0}</span>
-              </div>
-              <div className="detail-item">
-                <span className="detail-label">Total Meetings</span>
-                <span className="detail-value">{s.total_meetings ?? 0}</span>
-              </div>
-              <div className="detail-item">
-                <span className="detail-label">Total Transactions</span>
-                <span className="detail-value">{s.total_transactions ?? 0}</span>
-              </div>
-              <div className="detail-item">
-                <span className="detail-label">Total Events</span>
-                <span className="detail-value">{s.total_events ?? 0}</span>
-              </div>
-              <div className="detail-item">
-                <span className="detail-label">Total Errors</span>
-                <span className="detail-value">{s.total_errors ?? 0}</span>
-              </div>
+              <Detail label="Complete profiles"   value={s.complete_profiles} />
+              <Detail label="Public profiles"     value={s.public_profiles} />
+              <Detail label="Total contacts"      value={s.total_contacts} />
+              <Detail label="Total tasks"         value={s.total_tasks} />
+              <Detail label="Total meetings"      value={s.total_meetings} />
+              <Detail label="Total transactions"  value={s.total_transactions} />
+              <Detail label="Total events"        value={s.total_events} />
+              <Detail label="Total errors"        value={s.total_errors} />
             </div>
           </div>
         </div>
 
-        {/* Recent Users */}
         <div className="data-card">
           <div className="data-card-header">
-            <span className="data-card-title">Recent Signups</span>
-            <button className="btn btn-ghost btn-sm" onClick={() => navigate('/users')}>View All</button>
+            <span className="data-card-title">Recent signups</span>
+            <button className="btn btn-ghost btn-sm" onClick={() => navigate('/users')}>
+              View all <ArrowRight size={12} />
+            </button>
           </div>
-          <div className="data-table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>User</th>
-                  <th>Status</th>
-                  <th>Joined</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentUsers.map(user => (
-                  <tr key={user.id} className="clickable-row" onClick={() => navigate(`/users/${user.id}`)}>
-                    <td>
-                      <div className="user-cell">
-                        <div className="user-cell-avatar">
-                          {user.avatar_url ? (
-                            <img src={user.avatar_url} alt="" />
-                          ) : (
-                            (user.display_name || user.username || '?')[0].toUpperCase()
-                          )}
-                        </div>
-                        <div className="user-cell-info">
-                          <span className="user-cell-name">{user.display_name || user.username || 'Unnamed'}</span>
-                          <span className="user-cell-sub">@{user.username || '—'}</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      <span className={`badge badge-${user.access_status}`}>
-                        {user.access_status}
-                      </span>
-                    </td>
-                    <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                      {new Date(user.created_at).toLocaleDateString()}
-                    </td>
+          {recentUsers.length === 0 ? (
+            <EmptyState
+              icon={UsersIcon}
+              title="No users yet"
+              body="Once people sign up, they'll appear here. Until then, you can pre-approve specific email domains in Settings."
+              size="sm"
+            />
+          ) : (
+            <div className="data-table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Status</th>
+                    <th>Joined</th>
                   </tr>
-                ))}
-                {recentUsers.length === 0 && (
-                  <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No users yet</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {recentUsers.map(user => (
+                    <tr key={user.id} className="clickable-row" onClick={() => navigate(`/users/${user.id}`)}>
+                      <td>
+                        <div className="user-cell">
+                          <div className="user-cell-avatar">
+                            {user.avatar_url ? (
+                              <img src={user.avatar_url} alt="" />
+                            ) : (
+                              (user.display_name || user.username || '?')[0].toUpperCase()
+                            )}
+                          </div>
+                          <div className="user-cell-info">
+                            <span className="user-cell-name">{user.display_name || user.username || 'Unnamed'}</span>
+                            <span className="user-cell-sub">@{user.username || '—'}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`badge badge-${user.access_status}`}>
+                          {user.access_status}
+                        </span>
+                      </td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                        {new Date(user.created_at).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
+    </Page>
+  );
+}
+
+
+function SectionHeading({ title, hint }: { title: string; hint?: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+      <h2 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
+        {title}
+      </h2>
+      {hint && <Help text={hint} />}
     </div>
   );
 }
 
-// ─── Live signals (O-03) ─────────────────────────────────────
-// Subscribes to Realtime INSERTs on the three highest-signal
-// telemetry tables and renders a per-table counter that ticks up
-// as events stream in. We also keep a 5-minute rolling window of
-// last-N timestamps so the sparkline approximates rate-per-minute.
-//
-// RLS still applies on the channel server-side — admins see all.
 
-interface SignalState {
-  count:   number;      // since this card mounted
-  recent:  number[];    // timestamps in ms for last 5min
-  lastAt:  string | null;
+function Detail({ label, value }: { label: string; value: number | string | null | undefined }) {
+  return (
+    <div className="detail-item">
+      <span className="detail-label">{label}</span>
+      <span className="detail-value">{value ?? 0}</span>
+    </div>
+  );
 }
 
+
+// ─── Live signals — realtime event / error / push pulse ──
+interface SignalState {
+  count:  number;
+  recent: number[];
+  lastAt: string | null;
+}
 function emptySignal(): SignalState { return { count: 0, recent: [], lastAt: null }; }
 
 function LiveSignals() {
@@ -251,8 +260,6 @@ function LiveSignals() {
         { event: 'INSERT', schema: 'public', table: 'notification_deliveries' }, handle(setPushes))
       .subscribe(status => setConnected(status === 'SUBSCRIBED'));
 
-    // Decay the recent window even when no new events fire, so an
-    // idle dashboard doesn't keep showing a stale 5-min rate.
     const t = window.setInterval(() => {
       const cutoff = Date.now() - 5 * 60_000;
       setEvents(p => ({ ...p, recent: p.recent.filter(x => x >= cutoff) }));
@@ -264,19 +271,25 @@ function LiveSignals() {
   }, []);
 
   return (
-    <div style={{
-      display: 'grid', gap: 12, marginBottom: 16,
-      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-    }}>
-      <SignalCard label="Events (live)"     state={events} color="#7C3AED"
-        connected={connected} icon={<Activity size={14} />} />
-      <SignalCard label="Errors (live)"     state={errors} color="#ff5b6b"
-        connected={connected} icon={<AlertTriangle size={14} />} />
-      <SignalCard label="Push deliveries"   state={pushes} color="#14B8A6"
-        connected={connected} icon={<Zap size={14} />} />
-    </div>
+    <section style={{ marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <h2 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
+          Live signals
+        </h2>
+        <Help text="Real-time counts of activity since you opened this dashboard. The dot is green when the realtime channel is connected." />
+      </div>
+      <div style={{
+        display: 'grid', gap: 12,
+        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+      }}>
+        <SignalCard label="Events (live)"   state={events} color="#7C3AED" connected={connected} icon={<Activity size={14} />} />
+        <SignalCard label="Errors (live)"   state={errors} color="#ff5b6b" connected={connected} icon={<AlertTriangle size={14} />} />
+        <SignalCard label="Push deliveries" state={pushes} color="#14B8A6" connected={connected} icon={<Zap size={14} />} />
+      </div>
+    </section>
   );
 }
+
 
 function SignalCard({
   label, state, color, connected, icon,
@@ -285,11 +298,7 @@ function SignalCard({
 }) {
   const ratePerMin = state.recent.length / 5;
   return (
-    <div style={{
-      background: 'var(--bg-secondary, #11111a)',
-      border: '1px solid var(--border, #2a2a35)',
-      borderRadius: 8, padding: 14,
-    }}>
+    <div className="data-card" style={{ padding: 14 }}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: 6,
         color: 'var(--text-muted)', fontSize: 11,
@@ -305,7 +314,7 @@ function SignalCard({
         {label}
       </div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-        <span style={{ fontSize: 26, fontWeight: 700, color: 'var(--text-primary, #fff)' }}>
+        <span style={{ fontSize: 26, fontWeight: 700, color: 'var(--text-primary)' }}>
           {state.count}
         </span>
         <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>

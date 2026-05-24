@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Activity, RefreshCw, Search as SearchIcon, X, AlertTriangle, Gauge, Compass, Radio } from 'lucide-react';
+import Page from '../components/ui/Page';
 
 type Kind = 'event' | 'error' | 'perf' | 'search';
 const KINDS: Kind[] = ['event', 'error', 'perf', 'search'];
@@ -116,11 +117,11 @@ export default function Events() {
   const hasFilters = filterKind || filterName || filterUser || filterSession || search;
 
   return (
-    <div>
-      <div className="page-header">
-        <h1><Activity size={22} style={{ verticalAlign: 'middle', marginRight: 8 }} /> Events</h1>
-        <p>Unified telemetry across events, errors, performance, and search. Backed by <code>v_all_events</code>.</p>
-      </div>
+    <Page
+      title="Events"
+      subtitle="Unified telemetry across user events, app errors, performance traces, and search analytics. One feed, four lenses."
+      icon={<Activity size={20} />}
+    >
 
       {/* Filters */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16, alignItems: 'center' }}>
@@ -251,7 +252,7 @@ export default function Events() {
             )}
         </div>
       </div>
-    </div>
+    </Page>
   );
 }
 

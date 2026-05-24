@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import Page from '../components/ui/Page';
 import {
   CloudDownload,
   ExternalLink,
@@ -87,25 +88,11 @@ export default function OtaReleases() {
     : 0;
 
   return (
-    <div>
-      <div className="page-header">
-        <h1>
-          <CloudDownload size={22} style={{ verticalAlign: 'middle', marginRight: 8 }} />
-          OTA Releases
-        </h1>
-        <p>
-          Stallion is the active OTA provider. Push releases from the{' '}
-          <a
-            href={STALLION_DASHBOARD}
-            target="_blank"
-            rel="noreferrer"
-            style={{ color: 'var(--accent, #7C3AED)', textDecoration: 'none' }}
-          >
-            Stallion dashboard <ExternalLink size={11} style={{ verticalAlign: 'middle' }} />
-          </a>{' '}
-          — track adoption and failures here.
-        </p>
-      </div>
+    <Page
+      title="OTA Releases"
+      subtitle="Stallion-powered over-the-air JS bundle releases. New bundles ship to users without an app-store update — track adoption and failures here."
+      icon={<CloudDownload size={20} />}
+    >
 
       {/* ── Window picker + dashboard link ── */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
@@ -345,7 +332,7 @@ export default function OtaReleases() {
       )}
 
       <ReleaseHealth />
-    </div>
+    </Page>
   );
 }
 

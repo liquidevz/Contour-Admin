@@ -20,6 +20,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   KeyRound, ShieldCheck, ShieldOff, Plus, Trash2, X, Loader2, AlertTriangle,
 } from 'lucide-react';
+import Page from '../components/ui/Page';
 
 interface Factor {
   id:           string;
@@ -70,14 +71,11 @@ export default function Security() {
   const pending  = factors.filter(f => f.status === 'unverified');
 
   return (
-    <div>
-      <div className="page-header">
-        <h1>
-          <KeyRound size={22} style={{ verticalAlign: 'middle', marginRight: 8 }} />
-          Security
-        </h1>
-        <p>Manage two-factor authentication for <code>{user?.email}</code>.</p>
-      </div>
+    <Page
+      title="Security"
+      subtitle={`Manage two-factor authentication for ${user?.email}. Adding 2FA protects your admin account from password-only attacks.`}
+      icon={<KeyRound size={20} />}
+    >
 
       {/* Status strip */}
       <div style={{
@@ -164,7 +162,7 @@ export default function Security() {
           onSuccess={async () => { setEnroll(null); await load(); }}
         />
       )}
-    </div>
+    </Page>
   );
 }
 
