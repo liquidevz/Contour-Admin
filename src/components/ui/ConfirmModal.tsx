@@ -27,7 +27,7 @@ interface ConfirmModalProps {
     /** For severity=high: the exact string the user must type to enable confirm. */
     typedConfirm?:       string;
     /** Custom prompt shown above the typed-confirm input. */
-    typedConfirmPrompt?: string;
+    typedConfirmPrompt?: string | ReactNode;
     busy?:               boolean;
 }
 

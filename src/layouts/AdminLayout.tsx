@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useScope } from '../context/ScopeContext';
 import { supabase } from '../lib/supabase';
 import {
   LayoutDashboard, Users, UserCheck, ShoppingBag, HandHeart,
@@ -8,14 +9,21 @@ import {
   ScrollText, Settings, LogOut, Menu, X, ChevronDown, Shield,
   Activity, GitBranch, CloudDownload, Bell, Sliders,
   AlertTriangle, Terminal, UsersRound, Inbox, Gauge, Cog, KeyRound,
-  SlidersHorizontal, Command,
+  SlidersHorizontal, Command, Building2, Mail, Briefcase, Check,
+  User as UserIcon, FolderKanban, Receipt, Globe,
 } from 'lucide-react';
 import CommandPalette, { useNavCommands } from '../components/ui/CommandPalette';
 import IdleTimeout from '../components/ui/IdleTimeout';
 import ImpersonationBanner from '../components/ui/ImpersonationBanner';
 import ToastHost from '../components/ui/Toast';
 
-const navSections = [
+/**
+ * Sidebar sections for the Super-Admin (platform) scope — the existing
+ * full power-user view, unchanged. Reachable only by users with a
+ * platform role (admin / superadmin / analyst / …) AND when the active
+ * scope is 'platform'.
+ */
+const platformNavSections = [
   {
     label: 'Overview',
     items: [
@@ -27,6 +35,12 @@ const navSections = [
     items: [
       { to: '/waitlist', icon: UserCheck, label: 'Waitlist' },
       { to: '/users', icon: Users, label: 'All Users' },
+    ]
+  },
+  {
+    label: 'Organisations',
+    items: [
+      { to: '/organisations', icon: Building2, label: 'All Organisations' },
     ]
   },
   {
@@ -96,12 +110,89 @@ const navSections = [
   }
 ];
 
+/**
+ * Sidebar sections for an Org scope. Members see "My Workspace";
+ * managers/admins/owners see additional admin sections. We filter on
+ * role at render time.
+ */
+function buildOrgNavSections(role: 'owner' | 'admin' | 'manager' | 'member' | 'guest' | null) {
+  const isAdminTier = role === 'owner' || role === 'admin';
+  const isManagerOrUp = isAdminTier || role === 'manager';
+
+  const sections: Array<{ label: string; items: Array<{ to: string; icon: any; label: string }> }> = [
+    {
+      label: 'Workspace',
+      items: [
+        { to: '/org/dashboard', icon: LayoutDashboard, label: 'Overview' },
+        { to: '/org/inbox', icon: Bell, label: 'Inbox' },
+      ],
+    },
+  ];
+
+  // Work
+  const workItems: Array<{ to: string; icon: any; label: string }> = [];
+  if (isManagerOrUp) workItems.push({ to: '/org/projects', icon: FolderKanban, label: 'Projects' });
+  if (isAdminTier)   workItems.push({ to: '/org/approvals', icon: Receipt, label: 'Approvals' });
+  if (workItems.length) sections.push({ label: 'Work', items: workItems });
+
+  // People
+  const peopleItems: Array<{ to: string; icon: any; label: string }> = [];
+  if (isAdminTier)   peopleItems.push({ to: '/org/members',     icon: Users,     label: 'Members'      });
+  if (isAdminTier)   peopleItems.push({ to: '/org/invites',     icon: Mail,      label: 'Invitations'  });
+  if (isAdminTier)   peopleItems.push({ to: '/org/requests',    icon: UserCheck, label: 'Join Requests'});
+  if (isAdminTier)   peopleItems.push({ to: '/org/departments', icon: Briefcase, label: 'Departments'  });
+  if (isManagerOrUp) peopleItems.push({ to: '/org/teams',       icon: UsersRound,label: 'Teams'        });
+  if (peopleItems.length) sections.push({ label: 'People', items: peopleItems });
+
+  // Settings
+  if (isAdminTier) {
+    sections.push({
+      label: 'Administration',
+      items: [
+        { to: '/org/settings', icon: Settings,   label: 'Org Settings' },
+        { to: '/org/roles',    icon: KeyRound,   label: 'Custom Roles' },
+        { to: '/org/domains',  icon: Globe,      label: 'Domains' },
+        { to: '/org/audit',    icon: ScrollText, label: 'Audit Log' },
+        { to: '/org/activity', icon: Inbox,      label: 'Activity' },
+      ],
+    });
+  }
+
+  return sections;
+}
+
+/**
+ * Sections shown when the active scope is "Personal" — the user has
+ * either no orgs (yet) or has chosen to view their personal context.
+ * Minimal for now; will expand as P3 lifts more features into scope.
+ */
+const personalNavSections = [
+  {
+    label: 'Personal',
+    items: [
+      { to: '/dashboard', icon: LayoutDashboard, label: 'Overview' },
+    ],
+  },
+];
+
 export default function AdminLayout() {
   const { user, role, signOut } = useAuth();
+  const {
+    scope, memberships, isPlatformAdmin,
+    switchToPersonal, switchToPlatform, switchToOrg,
+  } = useScope();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  const [scopeMenuOpen, setScopeMenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Pick the right nav based on scope.
+  const navSections = useMemo(() => {
+    if (scope.type === 'platform') return platformNavSections;
+    if (scope.type === 'org')      return buildOrgNavSections(scope.role);
+    return personalNavSections;
+  }, [scope.type, scope.role]);
 
   const navCommands = useNavCommands(
     navSections.map(s => ({ section: s.label, items: s.items }))
@@ -141,10 +232,12 @@ export default function AdminLayout() {
 
   // Close mobile drawer on route change
   useEffect(() => { setSidebarOpen(false); }, [location.pathname]);
+  // Close scope menu on route change too
+  useEffect(() => { setScopeMenuOpen(false); }, [location.pathname]);
 
-  // Heartbeat — keeps admin_sessions table fresh.
+  // Heartbeat — keeps admin_sessions table fresh (only meaningful for platform admins).
   useEffect(() => {
-    if (!user) return;
+    if (!user || !isPlatformAdmin) return;
     const touch = () => {
       void supabase.rpc('admin_session_touch', { p_user_agent: navigator.userAgent });
     };
@@ -156,12 +249,23 @@ export default function AdminLayout() {
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [user]);
+  }, [user, isPlatformAdmin]);
 
-  // Open the command palette via the topbar pill — synthesize Ctrl+K
   const openPalette = () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
   };
+
+  // Display name for the current scope chip.
+  const scopeLabel =
+    scope.type === 'platform' ? 'Super Admin'
+    : scope.type === 'org'    ? (scope.membership?.org_name ?? 'Workspace')
+    : 'Personal';
+  const scopeRoleLabel =
+    scope.type === 'platform' ? (role ?? 'platform')
+    : scope.type === 'org'    ? (scope.role ?? '')
+    : 'self';
+
+  const activeMemberships = memberships.filter((m) => m.status === 'active');
 
   return (
     <div className="admin-layout">
@@ -177,7 +281,11 @@ export default function AdminLayout() {
             </div>
             <div className="logo-text">
               <span className="logo-title">Contour</span>
-              <span className="logo-subtitle">Admin Panel</span>
+              <span className="logo-subtitle">
+                {scope.type === 'platform' ? 'Super Admin'
+                 : scope.type === 'org'    ? 'Workspace'
+                 : 'Personal'}
+              </span>
             </div>
           </div>
           <button className="sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close menu">
@@ -226,7 +334,7 @@ export default function AdminLayout() {
             </div>
             <div className="user-details">
               <span className="user-email">{user?.email}</span>
-              <span className="user-role">{role || 'No role'}</span>
+              <span className="user-role">{scopeRoleLabel || 'No role'}</span>
             </div>
           </div>
           <button className="sign-out-btn" onClick={handleSignOut} title="Sign out" aria-label="Sign out">
@@ -250,9 +358,99 @@ export default function AdminLayout() {
             <span>Jump to…</span>
             <kbd>⌘K</kbd>
           </button>
-          <div className="top-bar-right">
-            <div className="role-badge">{role}</div>
+
+          {/* ── Scope switcher ─────────────────────────────────
+              Only render when the user actually has something to switch
+              between: at least one org membership, OR they're a platform
+              admin who also belongs to an org. A pure platform admin with
+              no org memberships sees a static role badge instead. */}
+          {(activeMemberships.length > 0 || (isPlatformAdmin && activeMemberships.length > 0)) ? (
+          <div style={{ position: 'relative', marginLeft: 'auto' }}>
+            <button
+              type="button"
+              onClick={() => setScopeMenuOpen((v) => !v)}
+              className="role-badge"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+                cursor: 'pointer', userSelect: 'none',
+              }}
+              aria-haspopup="menu"
+              aria-expanded={scopeMenuOpen}
+            >
+              {scope.type === 'platform' ? <Shield size={14} />
+                : scope.type === 'org'   ? <Building2 size={14} />
+                : <UserIcon size={14} />}
+              <span style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {scopeLabel}
+              </span>
+              <ChevronDown size={12} />
+            </button>
+
+            {scopeMenuOpen && (
+              <>
+                {/* click-outside catcher */}
+                <div
+                  onClick={() => setScopeMenuOpen(false)}
+                  style={{ position: 'fixed', inset: 0, zIndex: 10 }}
+                />
+                <div
+                  role="menu"
+                  style={{
+                    position: 'absolute', top: 'calc(100% + 8px)', right: 0,
+                    background: 'var(--bg-elevated, #14141c)',
+                    border: '1px solid var(--border-subtle, #2a2a35)',
+                    borderRadius: 8,
+                    minWidth: 260,
+                    boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
+                    zIndex: 11,
+                    overflow: 'hidden',
+                  }}
+                >
+                  {isPlatformAdmin && (
+                    <ScopeMenuItem
+                      label="Super Admin"
+                      sub={role ?? 'platform'}
+                      icon={<Shield size={14} />}
+                      active={scope.type === 'platform'}
+                      onClick={() => { switchToPlatform(); navigate('/dashboard'); }}
+                    />
+                  )}
+
+                  <ScopeMenuItem
+                    label="Personal"
+                    sub="Your individual account"
+                    icon={<UserIcon size={14} />}
+                    active={scope.type === 'personal'}
+                    onClick={() => { switchToPersonal(); navigate('/dashboard'); }}
+                  />
+
+                  {activeMemberships.length > 0 && (
+                    <div style={{ borderTop: '1px solid var(--border-subtle, #2a2a35)', padding: '6px 0' }}>
+                      <div style={{ padding: '6px 12px', fontSize: 10, letterSpacing: 1, color: 'var(--text-muted, #5a5a6e)' }}>
+                        WORKSPACES
+                      </div>
+                      {activeMemberships.map((m) => (
+                        <ScopeMenuItem
+                          key={m.org_id}
+                          label={m.org_name}
+                          sub={m.role}
+                          icon={<Building2 size={14} />}
+                          active={scope.type === 'org' && scope.orgId === m.org_id}
+                          onClick={() => { switchToOrg(m.org_id); navigate('/dashboard'); }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
+          ) : (
+            // No-orgs fallback: show the role badge so the topbar isn't empty.
+            <div className="top-bar-right" style={{ marginLeft: 'auto' }}>
+              <div className="role-badge">{role ?? 'no role'}</div>
+            </div>
+          )}
         </header>
         <div className="page-content">
           <Outlet />
@@ -264,5 +462,31 @@ export default function AdminLayout() {
       <IdleTimeout />
       <ToastHost />
     </div>
+  );
+}
+
+function ScopeMenuItem({
+  label, sub, icon, active, onClick,
+}: { label: string; sub: string; icon: React.ReactNode; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      role="menuitem"
+      style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        width: '100%', padding: '10px 12px',
+        background: active ? 'var(--bg-hover, rgba(255,255,255,0.04))' : 'transparent',
+        border: 'none', cursor: 'pointer', textAlign: 'left',
+        color: 'var(--text-primary, #e0e0e8)',
+      }}
+    >
+      <span style={{ display: 'inline-flex', color: 'var(--text-muted, #8a8a96)' }}>{icon}</span>
+      <span style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <span style={{ fontSize: 13, fontWeight: 500 }}>{label}</span>
+        <span style={{ fontSize: 11, color: 'var(--text-muted, #8a8a96)', textTransform: 'capitalize' }}>{sub}</span>
+      </span>
+      {active && <Check size={14} style={{ color: 'var(--accent, #6366f1)' }} />}
+    </button>
   );
 }

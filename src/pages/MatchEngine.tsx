@@ -462,12 +462,65 @@ function CorpusCard({ title, tokens, lastBuilt }: { title: string; tokens: numbe
 // Tab 3 — Forensics
 // ============================================================
 
+interface UserOption {
+  id: string;
+  display_name: string | null;
+  username: string | null;
+  avatar_url: string | null;
+}
+
 function ForensicsTab() {
   const [userA, setUserA] = useState('');
   const [userB, setUserB] = useState('');
   const [result, setResult] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  
+  // User search state
+  const [users, setUsers] = useState<UserOption[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [searchA, setSearchA] = useState('');
+  const [searchB, setSearchB] = useState('');
+  const [showDropdownA, setShowDropdownA] = useState(false);
+  const [showDropdownB, setShowDropdownB] = useState(false);
+
+  // Load users on mount
+  useEffect(() => {
+    async function loadUsers() {
+      setLoadingUsers(true);
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, display_name, username, avatar_url')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      setUsers((data as UserOption[]) || []);
+      setLoadingUsers(false);
+    }
+    void loadUsers();
+  }, []);
+
+  // Filter users based on search
+  const filteredUsersA = users.filter(u => {
+    const name = u.display_name || u.username || '';
+    return name.toLowerCase().includes(searchA.toLowerCase());
+  });
+
+  const filteredUsersB = users.filter(u => {
+    const name = u.display_name || u.username || '';
+    return name.toLowerCase().includes(searchB.toLowerCase());
+  });
+
+  function selectUserA(user: UserOption) {
+    setUserA(user.id);
+    setSearchA(user.display_name || user.username || user.id);
+    setShowDropdownA(false);
+  }
+
+  function selectUserB(user: UserOption) {
+    setUserB(user.id);
+    setSearchB(user.display_name || user.username || user.id);
+    setShowDropdownB(false);
+  }
 
   async function inspect() {
     if (!userA.trim() || !userB.trim()) return;
@@ -483,23 +536,178 @@ function ForensicsTab() {
 
   return (
     <div>
-      <div className="data-card" style={{ padding: 18, marginBottom: 14 }}>
+      <div className="data-card" style={{ padding: 18, marginBottom: 14, overflow: 'visible' }}>
         <div className="data-card-title" style={{ marginBottom: 12, fontSize: 14 }}>
           Inspect any user pair
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10, alignItems: 'end' }}>
-          <div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10, alignItems: 'end', position: 'relative' }}>
+          <div style={{ position: 'relative', zIndex: 100 }}>
             <label className="form-label">User A</label>
-            <input className="input-field" placeholder="uuid" value={userA} onChange={e => setUserA(e.target.value)} />
+            <input 
+              className="input-field" 
+              placeholder="Search users..." 
+              value={searchA} 
+              onChange={e => {
+                setSearchA(e.target.value);
+                setShowDropdownA(true);
+              }}
+              onFocus={() => setShowDropdownA(true)}
+              onBlur={() => setTimeout(() => setShowDropdownA(false), 200)}
+            />
+            {showDropdownA && filteredUsersA.length > 0 && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                right: 0,
+                maxHeight: 240,
+                overflowY: 'auto',
+                background: '#1a1a24',
+                border: '1px solid #2a2a35',
+                borderRadius: 6,
+                marginTop: 4,
+                zIndex: 9999,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+              }}>
+                {filteredUsersA.slice(0, 10).map(user => (
+                  <div
+                    key={user.id}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      selectUserA(user);
+                    }}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      borderBottom: '1px solid #2a2a35',
+                      transition: 'background 0.15s',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#11111a'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <div style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: '50%',
+                      background: '#11111a',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      overflow: 'hidden',
+                      flexShrink: 0,
+                    }}>
+                      {user.avatar_url ? (
+                        <img src={user.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        (user.display_name || user.username || '?')[0].toUpperCase()
+                      )}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e5e5' }}>
+                        {user.display_name || 'Unnamed'}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#888', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        @{user.username || '—'}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          <div>
+          <div style={{ position: 'relative', zIndex: 99 }}>
             <label className="form-label">User B</label>
-            <input className="input-field" placeholder="uuid" value={userB} onChange={e => setUserB(e.target.value)} />
+            <input 
+              className="input-field" 
+              placeholder="Search users..." 
+              value={searchB} 
+              onChange={e => {
+                setSearchB(e.target.value);
+                setShowDropdownB(true);
+              }}
+              onFocus={() => setShowDropdownB(true)}
+              onBlur={() => setTimeout(() => setShowDropdownB(false), 200)}
+            />
+            {showDropdownB && filteredUsersB.length > 0 && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                right: 0,
+                maxHeight: 240,
+                overflowY: 'auto',
+                background: '#1a1a24',
+                border: '1px solid #2a2a35',
+                borderRadius: 6,
+                marginTop: 4,
+                zIndex: 9999,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+              }}>
+                {filteredUsersB.slice(0, 10).map(user => (
+                  <div
+                    key={user.id}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      selectUserB(user);
+                    }}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      borderBottom: '1px solid #2a2a35',
+                      transition: 'background 0.15s',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#11111a'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <div style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: '50%',
+                      background: '#11111a',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      overflow: 'hidden',
+                      flexShrink: 0,
+                    }}>
+                      {user.avatar_url ? (
+                        <img src={user.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        (user.display_name || user.username || '?')[0].toUpperCase()
+                      )}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e5e5' }}>
+                        {user.display_name || 'Unnamed'}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#888', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        @{user.username || '—'}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          <button className="btn btn-primary" onClick={inspect} disabled={busy}>
+          <button className="btn btn-primary" onClick={inspect} disabled={busy || !userA || !userB}>
             <Search size={14} /> {busy ? 'Inspecting…' : 'Inspect'}
           </button>
         </div>
+        {loadingUsers && (
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
+            Loading users...
+          </div>
+        )}
       </div>
 
       {err && (

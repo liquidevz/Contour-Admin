@@ -17,5 +17,7 @@ export const supabase = createClient(supabaseUrl || 'https://placeholder.supabas
     flowType: 'pkce',
     // Persist sessions across tabs / refreshes
     persistSession: true,
+    // Custom storage key to avoid conflicts
+    storageKey: 'contour-admin-auth',
   },
 });

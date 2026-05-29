@@ -1,18 +1,22 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { ArrowLeft, UserCheck, UserX, Ban, Mail, Phone, Smartphone, AlertTriangle, Bell, Activity, ShieldOff, Download, Eye, EyeOff } from 'lucide-react';
+import { 
+  ArrowLeft, UserCheck, UserX, Mail, Phone, AlertTriangle, 
+  Bell, Activity, ShieldOff, Download, Eye, EyeOff, Calendar, 
+  Smartphone, User
+} from 'lucide-react';
 
 export default function UserDetail() {
-  const { id } = useParams<{ id: string }>();
+  const { id } = useParams();
   const navigate = useNavigate();
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<Record<string, any> | null>(null);
   const [email, setEmail] = useState('');
   const [activeTab, setActiveTab] = useState('profile');
-  const [tabData, setTabData] = useState<any[]>([]);
+  const [tabData, setTabData] = useState<Record<string, any>[]>([]);
   const [loading, setLoading] = useState(true);
   const [tabLoading, setTabLoading] = useState(false);
-  const [overview, setOverview] = useState<any>(null);
+  const [overview, setOverview] = useState<Record<string, any> | null>(null);
 
   useEffect(() => { if (id) loadProfile(id); }, [id]);
   useEffect(() => { if (id) loadTabData(activeTab); }, [activeTab, id]);
@@ -43,11 +47,8 @@ export default function UserDetail() {
     await loadProfile(id);
   }
 
-  // Track an active "view-as" session id in localStorage so a refresh
-  // doesn't lose the audit context — the badge + end-session button
-  // stay visible until the admin explicitly ends it.
   const impStorageKey = id ? `imp:${id}` : '';
-  const [impSessionId, setImp] = useState<string | null>(
+  const [impSessionId, setImp] = useState(
     impStorageKey ? localStorage.getItem(impStorageKey) : null,
   );
 
@@ -100,7 +101,7 @@ export default function UserDetail() {
   async function loadTabData(tab: string) {
     if (!id) return;
     setTabLoading(true);
-    let result: any[] = [];
+    let result: Record<string, any>[] = [];
 
     switch (tab) {
       case 'contacts': {
@@ -165,11 +166,11 @@ export default function UserDetail() {
       admin_id: user.id, action: status === 'approved' ? 'approve_user' : status === 'rejected' ? 'reject_user' : 'revoke_access',
       entity: 'profiles', entity_id: id,
     });
-    setProfile((p: any) => ({ ...p, access_status: status }));
+    setProfile((p) => ({ ...p, access_status: status }));
   }
 
   if (loading) return <div className="loading-state"><div className="spinner" /></div>;
-  if (!profile) return <div className="empty-state"><h3>User not found</h3></div>;
+  if (!profile) return <div className="empty-state"><h3>User not found</h3><button className="btn btn-primary" onClick={() => navigate('/users')}><ArrowLeft size={14} /> Back</button></div>;
 
   const tabs = [
     { key: 'profile', label: 'Profile' },
@@ -186,70 +187,75 @@ export default function UserDetail() {
   const isBanned = !!profile.banned_at;
 
   return (
-    <div>
-      <div className="page-header">
-        <div className="page-header-row">
-          <div className="flex-center gap-md">
-            <button className="btn btn-ghost btn-icon" onClick={() => navigate(-1)}>
-              <ArrowLeft size={18} />
-            </button>
-            <div>
-              <h1>{profile.display_name || profile.username || 'Unnamed User'}</h1>
-              <p style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span>@{profile.username || '—'}</span>
-                <span className={`badge badge-${profile.access_status}`}>{profile.access_status}</span>
-              </p>
-            </div>
-          </div>
-          <div className="btn-group">
-            {profile.access_status !== 'approved' && (
-              <button className="btn btn-success btn-sm" onClick={() => updateStatus('approved')}>
-                <UserCheck size={14} /> Approve
-              </button>
-            )}
-            {profile.access_status !== 'rejected' && (
-              <button className="btn btn-danger btn-sm" onClick={() => updateStatus('rejected')}>
-                <UserX size={14} /> Reject
-              </button>
-            )}
-            {profile.access_status === 'approved' && (
-              <button className="btn btn-danger btn-sm" onClick={() => updateStatus('rejected')}>
-                <Ban size={14} /> Revoke
-              </button>
-            )}
-            {isBanned ? (
-              <button className="btn btn-ghost btn-sm" onClick={() => void unbanUser()} title="Unban + restore">
-                <UserCheck size={14} /> Unban
-              </button>
-            ) : (
-              <button className="btn btn-danger btn-sm" onClick={() => void banUser()}
-                title="Ban this user — revokes all push tokens">
-                <ShieldOff size={14} /> Ban
-              </button>
-            )}
-            <button className="btn btn-ghost btn-sm" onClick={() => void exportUser()}
-              title="Download all data we hold about this user as JSON">
-              <Download size={14} /> Export
-            </button>
-            {impSessionId
-              ? <button className="btn btn-ghost btn-sm" onClick={() => void endImpersonation()}
-                  title="End the audited view-as session">
-                  <EyeOff size={14} /> End view-as
-                </button>
-              : <button className="btn btn-ghost btn-sm" onClick={() => void startImpersonation()}
-                  title="Start an audited view-as session for support work">
-                  <Eye size={14} /> View as
-                </button>}
+    <div style={{ padding: '24px 32px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
+        <button className="btn btn-ghost btn-icon" onClick={() => navigate('/users')}>
+          <ArrowLeft size={20} />
+        </button>
+        <div style={{
+          width: 64,
+          height: 64,
+          borderRadius: 12,
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 24,
+          fontWeight: 700,
+          color: 'white',
+          overflow: 'hidden',
+          flexShrink: 0,
+        }}>
+          {profile.avatar_url ? (
+            <img src={profile.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            (profile.display_name || profile.username || '?')[0].toUpperCase()
+          )}
+        </div>
+        <div style={{ flex: 1 }}>
+          <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, marginBottom: 4 }}>
+            {profile.display_name || 'Unnamed User'}
+          </h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ color: 'var(--text-muted)' }}>@{profile.username || '—'}</span>
+            <span className={`badge badge-${profile.access_status}`}>{profile.access_status}</span>
+            {profile.is_complete && <span className="badge badge-success">Complete</span>}
+            {profile.is_public && <span className="badge badge-info">Public</span>}
           </div>
         </div>
-      </div>
-
-      <div className="tabs-bar">
-        {tabs.map(t => (
-          <button key={t.key} className={`tab-btn ${activeTab === t.key ? 'active' : ''}`} onClick={() => setActiveTab(t.key)}>
-            {t.label}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {profile.access_status !== 'approved' && (
+            <button className="btn btn-success btn-sm" onClick={() => updateStatus('approved')}>
+              <UserCheck size={14} /> Approve
+            </button>
+          )}
+          {profile.access_status !== 'rejected' && (
+            <button className="btn btn-danger btn-sm" onClick={() => updateStatus('rejected')}>
+              <UserX size={14} /> Reject
+            </button>
+          )}
+          {isBanned ? (
+            <button className="btn btn-ghost btn-sm" onClick={() => void unbanUser()}>
+              <UserCheck size={14} /> Unban
+            </button>
+          ) : (
+            <button className="btn btn-warning btn-sm" onClick={() => void banUser()}>
+              <ShieldOff size={14} /> Ban
+            </button>
+          )}
+          <button className="btn btn-ghost btn-sm" onClick={() => void exportUser()}>
+            <Download size={14} /> Export
           </button>
-        ))}
+          {impSessionId ? (
+            <button className="btn btn-ghost btn-sm" onClick={() => void endImpersonation()}>
+              <EyeOff size={14} /> End view-as
+            </button>
+          ) : (
+            <button className="btn btn-ghost btn-sm" onClick={() => void startImpersonation()}>
+              <Eye size={14} /> View as
+            </button>
+          )}
+        </div>
       </div>
 
       {impSessionId && (
@@ -276,58 +282,44 @@ export default function UserDetail() {
           <ShieldOff size={14} style={{ marginTop: 2, flexShrink: 0 }} />
           <div>
             <strong>Banned</strong> on {new Date(profile.banned_at).toLocaleString()}
-            {profile.banned_reason ? ` — “${profile.banned_reason}”` : ''}
+            {profile.banned_reason ? ` — "${profile.banned_reason}"` : ''}
           </div>
         </div>
       )}
 
+      <div className="tabs-bar">
+        {tabs.map(t => (
+          <button key={t.key} className={`tab-btn ${activeTab === t.key ? 'active' : ''}`} onClick={() => setActiveTab(t.key)}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       {activeTab === 'platform' ? (
         tabLoading ? <div className="loading-state"><div className="spinner" /></div>
           : !overview ? <div className="empty-state"><h3>No platform data</h3></div>
-          : <PlatformPanel overview={overview} />
+          : <PlatformPanel overview={overview as any} />
       ) : activeTab === 'profile' ? (
         <div className="data-card" style={{ padding: 24 }}>
-          <div className="detail-grid">
-            <div className="detail-item">
-              <span className="detail-label">Display Name</span>
-              <span className="detail-value">{profile.display_name || '—'}</span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 20 }}>
+            <InfoCard icon={<User size={16} />} label="Display Name" value={profile.display_name || '—'} />
+            <InfoCard icon={<User size={16} />} label="Username" value={`@${profile.username || '—'}`} />
+            <InfoCard icon={<Mail size={16} />} label="Email" value={email || '—'} />
+            <InfoCard icon={<Phone size={16} />} label="Phone" value={profile.phone || '—'} />
+            <InfoCard icon={<Calendar size={16} />} label="Joined" value={new Date(profile.created_at).toLocaleDateString()} />
+            <InfoCard icon={<Activity size={16} />} label="Last Updated" value={new Date(profile.updated_at || profile.created_at).toLocaleDateString()} />
+          </div>
+          {profile.bio && (
+            <div style={{ marginTop: 24 }}>
+              <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Bio</h4>
+              <div style={{ padding: 16, background: 'var(--bg-secondary)', borderRadius: 8, fontSize: 14, lineHeight: 1.7 }}>
+                {profile.bio}
+              </div>
             </div>
-            <div className="detail-item">
-              <span className="detail-label">Username</span>
-              <span className="detail-value">@{profile.username || '—'}</span>
-            </div>
-            <div className="detail-item">
-              <span className="detail-label flex-center"><Mail size={12} /> Email</span>
-              <span className="detail-value">{email || '—'}</span>
-            </div>
-            <div className="detail-item">
-              <span className="detail-label flex-center"><Phone size={12} /> Phone</span>
-              <span className="detail-value">{profile.phone || '—'}</span>
-            </div>
-            <div className="detail-item">
-              <span className="detail-label">Bio</span>
-              <span className="detail-value">{profile.bio || '—'}</span>
-            </div>
-            <div className="detail-item">
-              <span className="detail-label">Access Status</span>
-              <span className={`badge badge-${profile.access_status}`}>{profile.access_status}</span>
-            </div>
-            <div className="detail-item">
-              <span className="detail-label">Profile Complete</span>
-              <span className="detail-value">{profile.is_complete ? 'Yes' : 'No'}</span>
-            </div>
-            <div className="detail-item">
-              <span className="detail-label">Public</span>
-              <span className="detail-value">{profile.is_public ? 'Yes' : 'No'}</span>
-            </div>
-            <div className="detail-item">
-              <span className="detail-label">Joined</span>
-              <span className="detail-value">{new Date(profile.created_at).toLocaleString()}</span>
-            </div>
-            <div className="detail-item">
-              <span className="detail-label">User ID</span>
-              <span className="detail-value mono">{profile.id}</span>
-            </div>
+          )}
+          <div style={{ marginTop: 24, padding: 16, background: 'var(--bg-secondary)', borderRadius: 8 }}>
+            <h4 style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: 'var(--text-muted)', textTransform: 'uppercase' }}>User ID</h4>
+            <code style={{ fontSize: 12, fontFamily: 'monospace' }}>{profile.id}</code>
           </div>
         </div>
       ) : tabLoading ? (
@@ -341,12 +333,15 @@ export default function UserDetail() {
         </div>
       ) : (
         <div className="data-card">
+          <div className="data-card-header">
+            <span className="data-card-title">{activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} ({tabData.length})</span>
+          </div>
           <div className="data-table-wrap">
             <table className="data-table">
               <thead>
                 <tr>
                   {Object.keys(tabData[0]).filter(k => k !== 'id').map(k => (
-                    <th key={k}>{k.replace(/_/g, ' ')}</th>
+                    <th key={k}>{k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</th>
                   ))}
                 </tr>
               </thead>
@@ -356,8 +351,9 @@ export default function UserDetail() {
                     {Object.entries(row).filter(([k]) => k !== 'id').map(([k, v]) => (
                       <td key={k} style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {v === null || v === undefined ? '—'
-                          : typeof v === 'boolean' ? (v ? 'Yes' : 'No')
-                          : typeof v === 'object' ? JSON.stringify(v)
+                          : typeof v === 'boolean' ? (v ? <span className="badge badge-success">Yes</span> : <span className="badge badge-default">No</span>)
+                          : k.includes('date') || k.includes('at') ? new Date(String(v)).toLocaleString()
+                          : typeof v === 'object' ? <code style={{ fontSize: 11 }}>{JSON.stringify(v).slice(0, 50)}</code>
                           : String(v).length > 50 ? String(v).slice(0, 50) + '…'
                           : String(v)}
                       </td>
@@ -373,24 +369,25 @@ export default function UserDetail() {
   );
 }
 
-// ─── Platform tab ────────────────────────────────────────────
-
-interface Overview {
-  tokens:   Array<{ token: string; platform: string; device_id: string | null; app_version: string | null; created_at: string; last_used: string }>;
-  sessions: Array<{ session_id: string; started_at: string; last_event_at: string; event_count: number; app_version: string | null; platform: string | null }>;
-  events:   Array<{ id: string; event_name: string; metadata: Record<string, unknown>; app_version: string | null; platform: string | null; created_at: string }>;
-  errors:   Array<{ id: string; error_name: string; error_message: string | null; app_version: string | null; platform: string | null; created_at: string }>;
-  pushes:   Array<{ id: string; campaign_id: string; campaign_title: string | null; platform: string; status: string; error: string | null; queued_at: string; sent_at: string | null; delivered_at: string | null; opened_at: string | null }>;
-  prefs:    { push_enabled: boolean; category_mutes: string[]; quiet_hours_start: number | null; quiet_hours_end: number | null } | null;
+function InfoCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
+  return (
+    <div style={{ padding: 16, background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, color: 'var(--text-muted)', fontSize: 12 }}>
+        {icon}
+        <span style={{ textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>{label}</span>
+      </div>
+      <div style={{ fontSize: 15, fontWeight: 600, wordBreak: 'break-word' }}>{value}</div>
+    </div>
+  );
 }
 
-function PlatformPanel({ overview }: { overview: Overview }) {
+function PlatformPanel({ overview }: { overview: { tokens: any[]; sessions: any[]; pushes: any[]; errors: any[]; events: any[]; prefs?: any } }) {
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      <Section icon={<Smartphone size={14} />} title={`Devices & push tokens (${overview.tokens.length})`}>
-        {overview.tokens.length === 0 ? <Empty>No registered push tokens</Empty>
+      <Section icon={<Smartphone size={14} />} title={`Devices & push tokens (${overview.tokens?.length ?? 0})`}>
+        {(overview.tokens?.length ?? 0) === 0 ? <Empty>No registered push tokens</Empty>
           : <Tbl head={['Platform', 'Device', 'App', 'First seen', 'Last used']}
-              rows={overview.tokens.map(t => [
+              rows={(overview.tokens ?? []).map((t: any) => [
                 t.platform,
                 t.device_id ? <code style={{ fontSize: 11 }}>{t.device_id.slice(0, 14)}</code> : '—',
                 t.app_version || '—',
@@ -399,10 +396,10 @@ function PlatformPanel({ overview }: { overview: Overview }) {
               ])} />}
       </Section>
 
-      <Section icon={<Activity size={14} />} title={`Recent sessions (${overview.sessions.length})`}>
-        {overview.sessions.length === 0 ? <Empty>No sessions in last 30 days</Empty>
+      <Section icon={<Activity size={14} />} title={`Recent sessions (${overview.sessions?.length ?? 0})`}>
+        {(overview.sessions?.length ?? 0) === 0 ? <Empty>No sessions in last 30 days</Empty>
           : <Tbl head={['Session', 'Started', 'Last event', 'Events', 'App', 'Platform']}
-              rows={overview.sessions.map(s => [
+              rows={(overview.sessions ?? []).map((s: any) => [
                 <code style={{ fontSize: 11 }}>{s.session_id.slice(0, 8)}</code>,
                 new Date(s.started_at).toLocaleString(),
                 new Date(s.last_event_at).toLocaleString(),
@@ -410,10 +407,10 @@ function PlatformPanel({ overview }: { overview: Overview }) {
               ])} />}
       </Section>
 
-      <Section icon={<Bell size={14} />} title={`Recent pushes (${overview.pushes.length})`}>
-        {overview.pushes.length === 0 ? <Empty>No push history</Empty>
+      <Section icon={<Bell size={14} />} title={`Recent pushes (${overview.pushes?.length ?? 0})`}>
+        {(overview.pushes?.length ?? 0) === 0 ? <Empty>No push history</Empty>
           : <Tbl head={['Campaign', 'Platform', 'Status', 'Sent', 'Delivered', 'Error']}
-              rows={overview.pushes.map(p => [
+              rows={(overview.pushes ?? []).map((p: any) => [
                 p.campaign_title || <code style={{ fontSize: 11 }}>{p.campaign_id.slice(0, 8)}</code>,
                 p.platform, p.status,
                 p.sent_at ? new Date(p.sent_at).toLocaleTimeString() : '—',
@@ -422,10 +419,10 @@ function PlatformPanel({ overview }: { overview: Overview }) {
               ])} />}
       </Section>
 
-      <Section icon={<AlertTriangle size={14} />} title={`Recent errors (${overview.errors.length})`}>
-        {overview.errors.length === 0 ? <Empty>No errors logged</Empty>
+      <Section icon={<AlertTriangle size={14} />} title={`Recent errors (${overview.errors?.length ?? 0})`}>
+        {(overview.errors?.length ?? 0) === 0 ? <Empty>No errors logged</Empty>
           : <Tbl head={['When', 'Error', 'App', 'Platform', 'Message']}
-              rows={overview.errors.map(e => [
+              rows={(overview.errors ?? []).map((e: any) => [
                 new Date(e.created_at).toLocaleString(),
                 <code style={{ fontSize: 11 }}>{e.error_name}</code>,
                 e.app_version || '—', e.platform || '—',
@@ -433,10 +430,10 @@ function PlatformPanel({ overview }: { overview: Overview }) {
               ])} />}
       </Section>
 
-      <Section icon={<Activity size={14} />} title={`Recent events (${overview.events.length})`}>
-        {overview.events.length === 0 ? <Empty>No events</Empty>
+      <Section icon={<Activity size={14} />} title={`Recent events (${overview.events?.length ?? 0})`}>
+        {(overview.events?.length ?? 0) === 0 ? <Empty>No events</Empty>
           : <Tbl head={['When', 'Event', 'App', 'Metadata']}
-              rows={overview.events.map(e => [
+              rows={(overview.events ?? []).map((e: any) => [
                 new Date(e.created_at).toLocaleString(),
                 <code style={{ fontSize: 11 }}>{e.event_name}</code>,
                 e.app_version || '—',
@@ -451,7 +448,7 @@ function PlatformPanel({ overview }: { overview: Overview }) {
           <div style={{ padding: 12, fontSize: 13 }}>
             Push enabled: <strong>{overview.prefs.push_enabled ? 'yes' : 'no'}</strong>
             {' · '}
-            Muted categories: {overview.prefs.category_mutes.length ? overview.prefs.category_mutes.join(', ') : '—'}
+            Muted categories: {overview.prefs.category_mutes?.length ? overview.prefs.category_mutes.join(', ') : '—'}
             {overview.prefs.quiet_hours_start != null && overview.prefs.quiet_hours_end != null && (
               <> {' · '} Quiet hours: {overview.prefs.quiet_hours_start}:00–{overview.prefs.quiet_hours_end}:00</>
             )}

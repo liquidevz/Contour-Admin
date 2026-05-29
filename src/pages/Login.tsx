@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { Shield, Mail, Lock, AlertCircle, Loader2, RefreshCw, KeyRound } from 'lucide-react';
 import { isConfigured } from '../lib/supabase';
 import { useState } from 'react';
+import { signInRateCheck, signInRecordAttempt } from '../lib/org';
 
 export default function Login() {
   const {
@@ -15,12 +16,34 @@ export default function Login() {
   const [otp, setOtp] = useState('');
   const [mfaLoading, setMfaLoading] = useState(false);
 
+  const [throttleMsg, setThrottleMsg] = useState<string | null>(null);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) return;
-    setLocalLoading(true);
-    await signInWithEmail(email, password);
-    setLocalLoading(false);
+    setLocalLoading(true); setThrottleMsg(null);
+    try {
+      // Pre-check: refuse to even try if this email is currently rate-
+      // limited (10 failures / 15 min). The RPC is non-blocking — if it
+      // errors (e.g. migration 082 not yet applied) we proceed.
+      try {
+        const check = await signInRateCheck(email.toLowerCase());
+        if (check && check.ok === false) {
+          const mins = Math.ceil((check.retry_after_seconds ?? 900) / 60);
+          setThrottleMsg(`Too many failed attempts. Try again in ~${mins} minute${mins === 1 ? '' : 's'}.`);
+          setLocalLoading(false);
+          return;
+        }
+      } catch { /* RPC missing — don't block sign-in */ }
+
+      const res = await signInWithEmail(email, password);
+
+      // Record outcome — drives the next rate-check window.
+      // Soft-fail: never block the user on a logging failure.
+      void signInRecordAttempt(email.toLowerCase(), !res?.error, res?.error?.message);
+    } finally {
+      setLocalLoading(false);
+    }
   };
 
   if (!isConfigured) {
@@ -209,6 +232,13 @@ export default function Login() {
               />
             </div>
           </div>
+
+          {throttleMsg && (
+            <div className="auth-error" style={{ marginTop: 12 }}>
+              <AlertCircle size={15} />
+              <span>{throttleMsg}</span>
+            </div>
+          )}
 
           {authError && (
             <div className="auth-error" style={{ marginTop: 12 }}>

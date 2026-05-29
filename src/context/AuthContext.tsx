@@ -10,6 +10,13 @@ interface MfaChallenge {
 interface AuthState {
   user: User | null;
   role: string | null;
+  /**
+   * True when the signed-in user's profile carries
+   * `force_password_change=true`. ProtectedRoute reads this and
+   * redirects to /change-password unconditionally until the user
+   * clears the flag via the `password_change_acknowledge` RPC.
+   */
+  forcePasswordChange: boolean;
   loading: boolean;
   error: string | null;
   mfaRequired: MfaChallenge | null;
@@ -46,9 +53,29 @@ async function fetchRoleFromDB(userId: string): Promise<string | null> {
   return null;
 }
 
+/**
+ * Read profiles.force_password_change for the signed-in user.
+ * Default false on any error — RLS is the actual security boundary;
+ * this flag only drives UX.
+ */
+async function fetchForcePwChange(userId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('force_password_change')
+      .eq('id', userId)
+      .maybeSingle();
+    if (error) return false;
+    return Boolean(data?.force_password_change);
+  } catch {
+    return false;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<string | null>(null);
+  const [forcePasswordChange, setForcePwChange] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mfaRequired, setMfaRequired] = useState<MfaChallenge | null>(null);
@@ -80,8 +107,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(u);
 
     if (u) {
-      // Give Supabase client 200ms to settle auth headers after a fresh session
-      await new Promise(r => setTimeout(r, 200));
+      // Small delay to ensure Supabase client auth headers are set
+      // This is critical for subsequent RLS queries to work correctly
+      await new Promise(r => setTimeout(r, 100));
       if (!mountedRef.current) return;
 
       const challenge = await checkMfa();
@@ -91,10 +119,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // ProtectedRoute check reads `role` so a missing role keeps
       // them on the Login screen even though Supabase thinks the
       // session is valid.
-      const r = challenge ? null : await fetchRoleFromDB(u.id);
-      if (mountedRef.current) setRole(r);
+      const [r, mustChangePw] = challenge
+        ? [null, false]
+        : await Promise.all([fetchRoleFromDB(u.id), fetchForcePwChange(u.id)]);
+      if (mountedRef.current) {
+        setRole(r);
+        setForcePwChange(mustChangePw);
+      }
     } else {
       setRole(null);
+      setForcePwChange(false);
       setMfaRequired(null);
     }
 
@@ -109,17 +143,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // 1. Get existing session immediately on mount
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!initializedRef.current) {
-        initializedRef.current = true;
-        resolveSession(session);
+    // 1. Get existing session immediately on mount - this is critical for page refresh
+    // We need to restore the session synchronously before any redirects happen
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!initializedRef.current && mountedRef.current) {
+          initializedRef.current = true;
+          await resolveSession(session);
+        }
+      } catch (err) {
+        console.error('[Auth] Failed to restore session:', err);
+        if (mountedRef.current) setLoading(false);
       }
-    });
+    })();
 
     // Absolute safety net — 6 seconds max
     const safety = setTimeout(() => {
-      if (mountedRef.current && loading) setLoading(false);
+      if (mountedRef.current && loading) {
+        console.warn('[Auth] Safety timeout reached, forcing loading=false');
+        setLoading(false);
+      }
     }, 6000);
 
     // 2. Listen for future sign-in / sign-out events
@@ -177,19 +221,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (mountedRef.current) {
       setUser(null);
       setRole(null);
+      setForcePwChange(false);
     }
   }, []);
 
   const refreshRole = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    const r = await fetchRoleFromDB(user.id);
-    if (mountedRef.current) { setRole(r); setLoading(false); }
+    const [r, mustChangePw] = await Promise.all([
+      fetchRoleFromDB(user.id),
+      fetchForcePwChange(user.id),
+    ]);
+    if (mountedRef.current) {
+      setRole(r);
+      setForcePwChange(mustChangePw);
+      setLoading(false);
+    }
   }, [user]);
 
   return (
     <AuthContext.Provider value={{
-      user, role, loading, error, mfaRequired,
+      user, role, forcePasswordChange, loading, error, mfaRequired,
       signInWithEmail, verifyMfa, cancelMfa, signOut, refreshRole,
     }}>
       {children}
