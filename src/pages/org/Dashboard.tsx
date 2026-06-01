@@ -95,7 +95,7 @@ export default function OrgDashboardPage() {
             ) : (
                 <>
                     {/* Metric cards */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
+                    <div className="org-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
                         <MetricCard
                             label="Active members"
                             value={summary.activeMembers}
@@ -140,11 +140,7 @@ export default function OrgDashboardPage() {
                     )}
 
                     {/* Recent activity */}
-                    <section style={{
-                        background: 'var(--bg-elevated,#14141c)',
-                        border: '1px solid var(--border-subtle,#2a2a35)',
-                        borderRadius: 8,
-                    }}>
+                    <section className="glass-card" style={{ borderRadius: 8 }}>
                         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-subtle,#2a2a35)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>Recent activity</h3>
                             <Link to="/org/audit" style={{ fontSize: 12, color: 'var(--text-muted,#8a8a96)' }}>

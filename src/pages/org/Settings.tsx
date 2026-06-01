@@ -22,6 +22,7 @@ import ConfirmModal from '../../components/ui/ConfirmModal';
 import { CardSkeleton } from '../../components/ui/Skeletons';
 import { toast as globalToast } from '../../components/ui/Toast';
 import { orgUpdateBranding, orgUpdateLocale, orgUpdateDefaults } from '../../lib/org';
+import { orgSetModule, type OrgModule } from '../../lib/tasks';
 
 interface OrgRow {
     id: string;
@@ -526,6 +527,51 @@ export default function OrgSettingsPage() {
                     </button>
                 </div>
             </section>
+
+            {/* Modules */}
+            {canEdit && (
+                <section className="data-card" style={{ marginTop: 20, padding: 16 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted,#8a8a96)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        Modules
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted,#8a8a96)', marginBottom: 12 }}>
+                        Enable or disable workspace capabilities for this organisation.
+                    </div>
+                    {([
+                        { key: 'agile', label: 'Agile boards', desc: 'Sprints, backlog, custom workflows, burndown.', def: true },
+                        { key: 'time_tracking', label: 'Time tracking', desc: 'Log time against tasks.', def: false },
+                        { key: 'documents', label: 'Documents', desc: 'Wiki & shared notes.', def: true },
+                        { key: 'discussions', label: 'Discussions', desc: 'Team channels & chat.', def: true },
+                    ] as { key: OrgModule; label: string; desc: string; def: boolean }[]).map((m) => {
+                        const modules = (org as any)?.settings?.modules ?? {};
+                        const enabled = modules[m.key] ?? m.def;
+                        return (
+                            <div key={m.key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderTop: '1px solid var(--border-subtle,#2a2a35)' }}>
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ fontSize: 14, fontWeight: 500 }}>{m.label}</div>
+                                    <div style={{ fontSize: 12, color: 'var(--text-muted,#8a8a96)' }}>{m.desc}</div>
+                                </div>
+                                <button
+                                    role="switch" aria-checked={enabled}
+                                    onClick={async () => {
+                                        try { await orgSetModule(orgId!, m.key, !enabled); await load(); }
+                                        catch (e: any) { showToast(e?.message ?? 'Could not update module', 'error'); }
+                                    }}
+                                    style={{
+                                        width: 42, height: 24, borderRadius: 999, border: 'none', cursor: 'pointer', position: 'relative',
+                                        background: enabled ? 'var(--accent,#7c5cff)' : 'var(--border-subtle,#2a2a35)', transition: 'background .15s',
+                                    }}
+                                >
+                                    <span style={{
+                                        position: 'absolute', top: 3, left: enabled ? 21 : 3, width: 18, height: 18, borderRadius: '50%',
+                                        background: '#fff', transition: 'left .15s',
+                                    }} />
+                                </button>
+                            </div>
+                        );
+                    })}
+                </section>
+            )}
 
             {/* Save */}
             {canEdit && (

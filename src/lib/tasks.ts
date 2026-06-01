@@ -446,3 +446,279 @@ export async function checklistItemToggle(itemId: string, done: boolean) {
         .eq('id', itemId);
     if (error) throw error;
 }
+
+// ════════════════════════════════════════════════════════════
+//  Agile board — migrations 090/091 (custom statuses, sprints,
+//  issue keys, search, burndown). Mirrors mobile lib/board.org.ts.
+// ════════════════════════════════════════════════════════════
+
+export type SprintStatus = 'planned' | 'active' | 'completed';
+
+export interface BoardStatus {
+    id: string;
+    name: string;
+    category: TaskStatusCategory;
+    color: string | null;
+    position: number;
+    is_default: boolean;
+    wip_limit: number | null;
+}
+
+export interface BoardSprint {
+    id: string;
+    name: string;
+    status: SprintStatus;
+    goal: string | null;
+    position: number;
+    start_date: string | null;
+    end_date: string | null;
+    started_at: string | null;
+    completed_at: string | null;
+    task_count: number;
+    done_count: number;
+}
+
+export interface BoardLabel { id: string; name: string; color: string | null }
+
+export interface BoardTask {
+    id: string;
+    title: string;
+    description: string | null;
+    issue_key: string | null;
+    issue_number: number | null;
+    status: string;
+    status_category: TaskStatusCategory | null;
+    status_id: string | null;
+    priority: TaskPriority | null;
+    type: TaskType | null;
+    assignee_user_id: string | null;
+    assignee_name: string | null;
+    assignee_avatar: string | null;
+    due_date: string | null;
+    completed_at: string | null;
+    section_id: string | null;
+    position: number | null;
+    estimate_points: number | null;
+    time_logged: number | null;
+    labels: BoardLabel[];
+    updated_at: string;
+    created_at: string;
+}
+
+export interface BoardPayload {
+    project: {
+        id: string; name: string; slug: string;
+        description: string | null; status: string;
+        color: string | null; icon: string | null;
+        start_date: string | null; target_date: string | null;
+        settings?: Record<string, any>;
+    };
+    statuses: BoardStatus[];
+    labels: BoardLabel[];
+    sprints: BoardSprint[];
+    tasks: BoardTask[];
+}
+
+export interface BurndownPoint { day: string; ideal: number; remaining: number; }
+
+export interface SearchResult {
+    tasks: Array<{
+        id: string; title: string; issue_key: string | null;
+        project_id: string | null; status_category: TaskStatusCategory | null;
+        priority: string | null;
+    }>;
+    projects: Array<{ id: string; name: string; slug: string }>;
+}
+
+export async function boardGet(projectId: string): Promise<BoardPayload> {
+    const { data, error } = await supabase.rpc('project_board_get', { p_project_id: projectId });
+    if (error) throw error;
+    return data as BoardPayload;
+}
+
+export async function taskMove(input: {
+    taskId: string; statusId?: string; sectionId?: string | null;
+    position?: number; setSection?: boolean;
+}): Promise<void> {
+    const { error } = await supabase.rpc('task_move', {
+        p_task_id: input.taskId,
+        p_status_id: input.statusId ?? null,
+        p_section_id: input.sectionId ?? null,
+        p_position: input.position ?? null,
+        p_set_section: input.setSection ?? false,
+    });
+    if (error) throw error;
+}
+
+export async function statusCreate(input: { projectId: string; name: string; category?: TaskStatusCategory; color?: string }): Promise<string> {
+    const { data, error } = await supabase.rpc('project_status_create', {
+        p_project_id: input.projectId, p_name: input.name,
+        p_category: input.category ?? 'unstarted', p_color: input.color ?? null,
+    });
+    if (error) throw error;
+    return data as string;
+}
+
+export async function statusUpdate(input: { statusId: string; name?: string; category?: TaskStatusCategory; color?: string; wipLimit?: number }): Promise<void> {
+    const { error } = await supabase.rpc('project_status_update', {
+        p_status_id: input.statusId, p_name: input.name ?? null,
+        p_category: input.category ?? null, p_color: input.color ?? null,
+        p_wip_limit: input.wipLimit ?? null,
+    });
+    if (error) throw error;
+}
+
+export async function statusReorder(statusIds: string[]): Promise<void> {
+    const { error } = await supabase.rpc('project_status_reorder', { p_status_ids: statusIds });
+    if (error) throw error;
+}
+
+export async function statusDelete(statusId: string): Promise<void> {
+    const { error } = await supabase.rpc('project_status_delete', { p_status_id: statusId });
+    if (error) throw error;
+}
+
+export async function sprintCreate(input: { projectId: string; name: string; goal?: string; start?: string; end?: string }): Promise<string> {
+    const { data, error } = await supabase.rpc('sprint_create', {
+        p_project_id: input.projectId, p_name: input.name,
+        p_goal: input.goal ?? null, p_start: input.start ?? null, p_end: input.end ?? null,
+    });
+    if (error) throw error;
+    return data as string;
+}
+
+export async function sprintStart(sprintId: string): Promise<void> {
+    const { error } = await supabase.rpc('sprint_start', { p_sprint_id: sprintId });
+    if (error) throw error;
+}
+
+export async function sprintComplete(sprintId: string, moveToSprintId?: string | null): Promise<number> {
+    const { data, error } = await supabase.rpc('sprint_complete', {
+        p_sprint_id: sprintId, p_move_to_sprint_id: moveToSprintId ?? null,
+    });
+    if (error) throw error;
+    return (data as number) ?? 0;
+}
+
+export async function burndownGet(sprintId: string): Promise<BurndownPoint[]> {
+    const { data, error } = await supabase.rpc('project_burndown', { p_sprint_id: sprintId });
+    if (error) throw error;
+    return (data ?? []) as BurndownPoint[];
+}
+
+export async function orgGlobalSearch(orgId: string, q: string, limit = 20): Promise<SearchResult> {
+    const { data, error } = await supabase.rpc('org_global_search', { p_org_id: orgId, p_q: q, p_limit: limit });
+    if (error) throw error;
+    return (data as SearchResult) ?? { tasks: [], projects: [] };
+}
+
+export interface VelocityRow {
+    sprint_id: string; name: string; completed_at: string | null;
+    point_total: number; point_done: number; task_total: number; task_done: number;
+}
+export async function projectVelocity(projectId: string, limit = 6): Promise<VelocityRow[]> {
+    const { data, error } = await supabase.rpc('project_velocity', { p_project_id: projectId, p_limit: limit });
+    if (error) throw error;
+    return (data ?? []) as VelocityRow[];
+}
+
+// ── templates / config / permissions / platform / modules (migration 093) ──
+
+export interface TemplateStatus { name: string; category: TaskStatusCategory; color?: string }
+export interface TemplateLabel { name: string; color?: string }
+export interface ProjectTemplate {
+    id: string; key: string | null; name: string; description: string | null;
+    icon: string | null; color: string | null;
+    statuses: TemplateStatus[]; labels: TemplateLabel[];
+    is_global: boolean; org_id: string | null;
+}
+
+export async function templateList(orgId?: string | null): Promise<ProjectTemplate[]> {
+    const { data, error } = await supabase.rpc('project_template_list', { p_org_id: orgId ?? null });
+    if (error) throw error;
+    return (data ?? []) as ProjectTemplate[];
+}
+
+export async function applyTemplate(projectId: string, templateId: string): Promise<void> {
+    const { error } = await supabase.rpc('project_apply_template', { p_project_id: projectId, p_template_id: templateId });
+    if (error) throw error;
+}
+
+export async function projectSetConfig(input: {
+    projectId: string; requiredFields?: string[]; deleteRole?: 'admin' | 'manager' | 'member';
+}): Promise<void> {
+    const { error } = await supabase.rpc('project_set_config', {
+        p_project_id: input.projectId,
+        p_required_fields: input.requiredFields ?? null,
+        p_delete_role: input.deleteRole ?? null,
+    });
+    if (error) throw error;
+}
+
+export async function taskDelete(taskId: string): Promise<void> {
+    const { error } = await supabase.rpc('task_delete', { p_task_id: taskId });
+    if (error) throw error;
+}
+
+export async function taskCommentMention(taskId: string, body: string, mentionUserIds: string[] = []): Promise<string> {
+    const { data, error } = await supabase.rpc('task_comment_mention', {
+        p_task_id: taskId, p_body: body, p_mention_user_ids: mentionUserIds,
+    });
+    if (error) throw error;
+    return data as string;
+}
+
+export interface OrgHealthRow {
+    org_id: string; org_name: string; members: number;
+    open_tasks: number; created_window: number; completed_window: number; active_sprints: number;
+}
+export async function platformOrgHealth(days = 30, limit = 50): Promise<OrgHealthRow[]> {
+    const { data, error } = await supabase.rpc('platform_org_health', { p_days: days, p_limit: limit });
+    if (error) throw error;
+    return (data ?? []) as OrgHealthRow[];
+}
+
+export type OrgModule = 'agile' | 'time_tracking' | 'documents' | 'discussions';
+const MODULE_DEFAULTS: Record<OrgModule, boolean> = { agile: true, time_tracking: false, documents: true, discussions: true };
+
+export async function orgSetModule(orgId: string, module: OrgModule, enabled: boolean): Promise<void> {
+    const { error } = await supabase.rpc('org_set_module', { p_org_id: orgId, p_module: module, p_enabled: enabled });
+    if (error) throw error;
+}
+
+export async function orgModules(orgId: string): Promise<Record<OrgModule, boolean>> {
+    try {
+        const { data } = await supabase.from('organizations').select('settings').eq('id', orgId).single();
+        const m = (data as any)?.settings?.modules ?? {};
+        return {
+            agile: m.agile ?? MODULE_DEFAULTS.agile,
+            time_tracking: m.time_tracking ?? MODULE_DEFAULTS.time_tracking,
+            documents: m.documents ?? MODULE_DEFAULTS.documents,
+            discussions: m.discussions ?? MODULE_DEFAULTS.discussions,
+        };
+    } catch { return { ...MODULE_DEFAULTS }; }
+}
+
+// ── labels + time tracking (migration 094) ──
+
+export async function labelList(orgId: string): Promise<BoardLabel[]> {
+    const { data, error } = await supabase.rpc('label_list', { p_org_id: orgId });
+    if (error) throw error;
+    return (data ?? []) as BoardLabel[];
+}
+export async function labelCreate(orgId: string, name: string, color?: string): Promise<string> {
+    const { data, error } = await supabase.rpc('label_create', { p_org_id: orgId, p_name: name, p_color: color ?? null });
+    if (error) throw error;
+    return data as string;
+}
+export async function taskSetLabels(taskId: string, labelIds: string[]): Promise<void> {
+    const { error } = await supabase.rpc('task_set_labels', { p_task_id: taskId, p_label_ids: labelIds });
+    if (error) throw error;
+}
+export async function logTime(taskId: string, minutes: number, note?: string): Promise<string> {
+    const { data, error } = await supabase.rpc('task_log_time', {
+        p_task_id: taskId, p_minutes: minutes, p_note: note ?? null, p_started_at: null,
+    });
+    if (error) throw error;
+    return data as string;
+}

@@ -1,6 +1,8 @@
+import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ScopeProvider, useScope } from './context/ScopeContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { isConfigured } from './lib/supabase';
 import ErrorBoundary from './components/ErrorBoundary';
 import PageErrorBoundary from './components/PageErrorBoundary';
@@ -71,7 +73,7 @@ const PLATFORM_ROLES = ['admin', 'superadmin', 'analyst', 'moderator', 'release_
  */
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, role, forcePasswordChange, loading: authLoading } = useAuth();
-  const { memberships, isPlatformAdmin, loading: scopeLoading } = useScope();
+  const { scope, memberships, isPlatformAdmin, loading: scopeLoading } = useScope();
   const location = useLocation();
 
   if (!isConfigured) return <Navigate to="/login" replace />;
@@ -108,6 +110,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     // Note: even an org member needs an active membership; pending invites
     // alone don't grant panel access. This matches the mobile-app gate.
     void isPlatformAdmin;
+    void scope; // Scope is now handled in ScopeContext with route awareness
     return <Navigate to="/login" replace />;
   }
 
@@ -145,20 +148,21 @@ function PageWrapper({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <ScopeProvider>
-          <BrowserRouter>
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/change-password" element={<ChangePasswordRoute />} />
-              <Route
-                path="/"
-                element={
-                  <ProtectedRoute>
-                    <AdminLayout />
-                  </ProtectedRoute>
-                }
-              >
+      <ThemeProvider>
+        <AuthProvider>
+          <ScopeProvider>
+            <BrowserRouter>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route path="/change-password" element={<ChangePasswordRoute />} />
+                <Route
+                  path="/"
+                  element={
+                    <ProtectedRoute>
+                      <AdminLayout />
+                    </ProtectedRoute>
+                  }
+                >
                 <Route index element={<Navigate to="/dashboard" replace />} />
 
                 {/* ── Platform-admin scope (existing) ─────────── */}
@@ -220,6 +224,7 @@ export default function App() {
           </BrowserRouter>
         </ScopeProvider>
       </AuthProvider>
-    </ErrorBoundary>
+    </ThemeProvider>
+  </ErrorBoundary>
   );
 }

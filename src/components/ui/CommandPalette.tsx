@@ -22,14 +22,29 @@ export interface PaletteItem {
 
 interface CommandPaletteProps {
     items: PaletteItem[];
+    /** Optional async source (e.g. issue-key / project search) merged into results. */
+    remoteSearch?: (q: string) => Promise<PaletteItem[]>;
 }
 
-export default function CommandPalette({ items }: CommandPaletteProps) {
+export default function CommandPalette({ items, remoteSearch }: CommandPaletteProps) {
     const [open, setOpen]       = useState(false);
     const [query, setQuery]     = useState('');
     const [selected, setSelected] = useState(0);
+    const [remoteItems, setRemoteItems] = useState<PaletteItem[]>([]);
     const inputRef              = useRef<HTMLInputElement>(null);
     const listRef               = useRef<HTMLDivElement>(null);
+
+    // Debounced remote search (issues / projects).
+    useEffect(() => {
+        if (!remoteSearch) return;
+        const q = query.trim();
+        if (q.length < 1) { setRemoteItems([]); return; }
+        let alive = true;
+        const t = setTimeout(() => {
+            remoteSearch(q).then((r) => { if (alive) setRemoteItems(r); }).catch(() => { if (alive) setRemoteItems([]); });
+        }, 220);
+        return () => { alive = false; clearTimeout(t); };
+    }, [query, remoteSearch]);
 
     // Cmd/Ctrl+K opens; / opens when no input focused; Esc closes
     useEffect(() => {
@@ -64,17 +79,15 @@ export default function CommandPalette({ items }: CommandPaletteProps) {
 
     const results = useMemo(() => {
         const q = query.trim().toLowerCase();
-        if (!q) return items.slice(0, 50);
-        return items
-            .map(it => ({
-                it,
-                score: scoreItem(it, q),
-            }))
+        const local = !q ? items.slice(0, 50) : items
+            .map(it => ({ it, score: scoreItem(it, q) }))
             .filter(x => x.score > 0)
             .sort((a, b) => b.score - a.score)
             .slice(0, 50)
             .map(x => x.it);
-    }, [items, query]);
+        // Remote items (already query-specific) take precedence, then nav.
+        return [...remoteItems, ...local].slice(0, 80);
+    }, [items, query, remoteItems]);
 
     useEffect(() => { setSelected(0); }, [query]);
 

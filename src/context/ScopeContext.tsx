@@ -10,10 +10,6 @@
  * The scope determines what the AdminLayout sidebar shows and what page
  * data is filtered to. Persisted per-user in localStorage so refresh
  * lands the user back in the same workspace they were last viewing.
- *
- * Critically, this provider is ADDITIVE: it does not modify AuthContext
- * or the existing platform-admin pages. Those pages keep working when
- * the active scope is 'platform'.
  */
 
 import {
@@ -28,25 +24,6 @@ import {
 } from 'react';
 import { useAuth } from './AuthContext';
 import { orgMyMemberships, type OrgMembership, type OrgRole } from '../lib/org';
-
-/**
- * IMPORTANT — bug fix history:
- *   v1 of this provider latched the "scope restored" flag as soon as
- *   memberships finished loading. But role from AuthContext arrives
- *   on a SEPARATE clock (a 200ms MFA-check delay then a profile fetch).
- *   So on first paint we'd often see `role === null` → isPlatformAdmin
- *   was false → we defaulted superadmins into PERSONAL_SCOPE, which
- *   renders a sidebar with only "Overview". Every Users / Marketplace
- *   / etc. nav entry vanished and the page looked broken.
- *
- *   v2 fixes that by:
- *     1. Requiring authLoading === false before restoring scope (so
- *        role is settled and isPlatformAdmin is accurate).
- *     2. Never latching scope into PERSONAL for a platform admin; if
- *        we picked Personal earlier and isPlatformAdmin later becomes
- *        true, we re-elevate to PLATFORM_SCOPE on the next tick.
- *     3. Locking restoredFor only after we made a meaningful decision.
- */
 
 const PLATFORM_ROLES = new Set(['admin', 'superadmin', 'analyst', 'moderator', 'release_manager', 'support']);
 
@@ -65,7 +42,6 @@ const PLATFORM_SCOPE: Scope = { type: 'platform', orgId: null, role: null, membe
 interface ScopeContextValue {
     scope: Scope;
     memberships: OrgMembership[];
-    /** True if the signed-in user has a platform-admin role (admin/superadmin/etc.). */
     isPlatformAdmin: boolean;
     loading: boolean;
     switchToPersonal: () => void;
@@ -88,39 +64,19 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
     const { user, role: platformRoleStr, loading: authLoading } = useAuth();
     const [memberships, setMemberships] = useState<OrgMembership[]>([]);
     const [scope, setScope] = useState<Scope>(PERSONAL_SCOPE);
-    const [loading, setLoading] = useState(false);
-    const restoredFor = useRef<string | null>(null);
+    const [loading, setLoading] = useState(true);
+    const initialized = useRef(false);
 
     const isPlatformAdmin = !!platformRoleStr && PLATFORM_ROLES.has(platformRoleStr);
 
-    const refresh = useCallback(async () => {
-        if (!user) {
-            setMemberships([]);
-            setScope(isPlatformAdmin ? PLATFORM_SCOPE : PERSONAL_SCOPE);
-            return;
-        }
-        setLoading(true);
-        try {
-            const list = await orgMyMemberships();
-            setMemberships(list);
-        } catch (err) {
-            // Most likely cause: the org migrations haven't been applied yet
-            // to the DB this admin is pointed at. Don't crash — surface empty.
-            // eslint-disable-next-line no-console
-            console.warn('[Scope] failed to load memberships', err);
-            setMemberships([]);
-        } finally {
-            setLoading(false);
-        }
-    }, [user, isPlatformAdmin]);
-
+    // Single effect to handle everything - load memberships and restore scope
     useEffect(() => {
+        // Reset on user change
         if (!user) {
             setMemberships([]);
             setScope(PERSONAL_SCOPE);
-            restoredFor.current = null;
-            // Drop stale scope from previous user to avoid the next sign-in
-            // landing on a workspace they no longer have access to.
+            setLoading(false);
+            initialized.current = false;
             try {
                 if (typeof window !== 'undefined') {
                     Object.keys(window.localStorage)
@@ -130,92 +86,144 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
             } catch { /* ok */ }
             return;
         }
-        // Start loading memberships immediately without blocking
-        void refresh();
-    }, [user, refresh]);
 
-    // Restore last-selected scope after BOTH auth and memberships settle.
-    // Critically: we wait for !authLoading so `role` (and therefore
-    // `isPlatformAdmin`) is accurate before we pick a default scope.
-    useEffect(() => {
-        if (!user) return;
-        if (authLoading) return;     // wait for role to land
-        if (loading) return;         // wait for memberships
-        if (restoredFor.current === user.id) return;
+        // Wait for auth to finish loading
+        if (authLoading) return;
 
-        try {
-            const raw = typeof window !== 'undefined' ? window.localStorage.getItem(storageKey(user.id)) : null;
+        // Only initialize once per user
+        if (initialized.current) return;
+        initialized.current = true;
 
-            if (!raw) {
-                // Default: platform admins land on Super Admin; others
-                // on the first active org, else Personal.
+        // Load memberships and restore scope
+        (async () => {
+            setLoading(true);
+            
+            // Fetch memberships
+            let membershipList: OrgMembership[] = [];
+            try {
+                membershipList = await orgMyMemberships();
+                setMemberships(membershipList);
+            } catch (err) {
+                console.warn('[Scope] failed to load memberships', err);
+                setMemberships([]);
+            }
+
+            // Restore scope based on current route
+            const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+            const isOnOrgRoute = currentPath.startsWith('/org/');
+
+            try {
+                const raw = typeof window !== 'undefined' ? window.localStorage.getItem(storageKey(user.id)) : null;
+                
+                // If on org route, force org scope
+                if (isOnOrgRoute) {
+                    if (raw) {
+                        const parsed = JSON.parse(raw) as { type: ScopeType; orgId?: string };
+                        if (parsed.type === 'org' && parsed.orgId) {
+                            const m = membershipList.find((x) => x.org_id === parsed.orgId && x.status === 'active');
+                            if (m) {
+                                setScope(buildOrgScope(m));
+                                setLoading(false);
+                                return;
+                            }
+                        }
+                    }
+                    // Use first available org
+                    const firstOrg = membershipList.find((m) => m.status === 'active');
+                    if (firstOrg) {
+                        setScope(buildOrgScope(firstOrg));
+                        setLoading(false);
+                        return;
+                    }
+                }
+
+                // Not on org route - restore saved scope or use default
+                if (raw) {
+                    const parsed = JSON.parse(raw) as { type: ScopeType; orgId?: string };
+                    
+                    if (parsed.type === 'platform' && isPlatformAdmin) {
+                        setScope(PLATFORM_SCOPE);
+                    } else if (parsed.type === 'org' && parsed.orgId) {
+                        const m = membershipList.find((x) => x.org_id === parsed.orgId && x.status === 'active');
+                        if (m) {
+                            setScope(buildOrgScope(m));
+                        } else if (isPlatformAdmin) {
+                            setScope(PLATFORM_SCOPE);
+                        } else {
+                            const firstOrg = membershipList.find((x) => x.status === 'active');
+                            setScope(firstOrg ? buildOrgScope(firstOrg) : PERSONAL_SCOPE);
+                        }
+                    } else if (parsed.type === 'personal') {
+                        setScope(isPlatformAdmin ? PLATFORM_SCOPE : PERSONAL_SCOPE);
+                    } else {
+                        setScope(isPlatformAdmin ? PLATFORM_SCOPE : PERSONAL_SCOPE);
+                    }
+                } else {
+                    // No saved scope - use defaults
+                    if (isPlatformAdmin) {
+                        setScope(PLATFORM_SCOPE);
+                    } else {
+                        const firstOrg = membershipList.find((m) => m.status === 'active');
+                        setScope(firstOrg ? buildOrgScope(firstOrg) : PERSONAL_SCOPE);
+                    }
+                }
+            } catch (err) {
+                console.warn('[Scope] restore failed', err);
                 if (isPlatformAdmin) {
                     setScope(PLATFORM_SCOPE);
                 } else {
-                    const firstOrg = memberships.find((m) => m.status === 'active');
+                    const firstOrg = membershipList.find((m) => m.status === 'active');
                     setScope(firstOrg ? buildOrgScope(firstOrg) : PERSONAL_SCOPE);
                 }
-                restoredFor.current = user.id;
-                return;
             }
+            
+            setLoading(false);
+        })();
+    }, [user, authLoading, isPlatformAdmin]);
 
-            const parsed = JSON.parse(raw) as { type: ScopeType; orgId?: string };
-            if (parsed.type === 'platform' && isPlatformAdmin) {
-                setScope(PLATFORM_SCOPE);
-            } else if (parsed.type === 'org' && parsed.orgId) {
-                const m = memberships.find((x) => x.org_id === parsed.orgId && x.status === 'active');
-                if (m) setScope(buildOrgScope(m));
-                else if (isPlatformAdmin) setScope(PLATFORM_SCOPE);
-                else setScope(PERSONAL_SCOPE);
-            } else if (parsed.type === 'personal' && isPlatformAdmin) {
-                // Defensive: a stale "personal" value should NOT downgrade
-                // a platform admin into a Personal scope where the sidebar
-                // shows almost nothing. Upgrade to Platform.
-                setScope(PLATFORM_SCOPE);
-            } else {
-                setScope(PERSONAL_SCOPE);
-            }
-            restoredFor.current = user.id;
-        } catch (err) {
-            // eslint-disable-next-line no-console
-            console.warn('[Scope] restore failed', err);
-        }
-    }, [user, authLoading, memberships, loading, isPlatformAdmin]);
-
-    // Safety net: if role becomes available LATER (e.g. auth-state-change
-    // post-MFA) and we're still sitting in PERSONAL_SCOPE for a platform
-    // admin, elevate to PLATFORM_SCOPE so the sidebar shows up.
+    // Persist scope changes to localStorage
     useEffect(() => {
-        if (!user || authLoading) return;
-        if (isPlatformAdmin && scope.type === 'personal') {
-            setScope(PLATFORM_SCOPE);
-        }
-    }, [user, authLoading, isPlatformAdmin, scope.type]);
-
-    // Persist scope on change.
-    useEffect(() => {
-        if (!user || typeof window === 'undefined') return;
+        if (!user || typeof window === 'undefined' || !initialized.current) return;
         const payload = JSON.stringify({
             type: scope.type,
             orgId: scope.orgId ?? undefined,
         });
-        try { window.localStorage.setItem(storageKey(user.id), payload); } catch { /* ok */ }
+        try {
+            window.localStorage.setItem(storageKey(user.id), payload);
+        } catch { /* ok */ }
     }, [scope, user]);
 
     const switchToPersonal = useCallback(() => setScope(PERSONAL_SCOPE), []);
+    
     const switchToPlatform = useCallback(() => {
         if (isPlatformAdmin) setScope(PLATFORM_SCOPE);
     }, [isPlatformAdmin]);
+    
     const switchToOrg = useCallback((orgId: string) => {
         const m = memberships.find((x) => x.org_id === orgId && x.status === 'active');
         if (m) setScope(buildOrgScope(m));
     }, [memberships]);
 
+    const refresh = useCallback(async () => {
+        if (!user) return;
+        try {
+            const list = await orgMyMemberships();
+            setMemberships(list);
+        } catch (err) {
+            console.warn('[Scope] refresh failed', err);
+        }
+    }, [user]);
+
     const value = useMemo<ScopeContextValue>(() => ({
-        scope, memberships, isPlatformAdmin, loading,
-        switchToPersonal, switchToPlatform, switchToOrg, refresh,
-    }), [scope, memberships, isPlatformAdmin, loading,
-        switchToPersonal, switchToPlatform, switchToOrg, refresh]);
+        scope,
+        memberships,
+        isPlatformAdmin,
+        loading,
+        switchToPersonal,
+        switchToPlatform,
+        switchToOrg,
+        refresh,
+    }), [scope, memberships, isPlatformAdmin, loading, switchToPersonal, switchToPlatform, switchToOrg, refresh]);
 
     return <ScopeContext.Provider value={value}>{children}</ScopeContext.Provider>;
 }
@@ -223,7 +231,6 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
 export function useScope(): ScopeContextValue {
     const ctx = useContext(ScopeContext);
     if (!ctx) {
-        // Fallback shim — keeps legacy code calling useScope() from crashing.
         return {
             scope: PERSONAL_SCOPE,
             memberships: [],
@@ -241,6 +248,7 @@ export function useScope(): ScopeContextValue {
 export function useOrgId(): string | null {
     return useScope().scope.orgId;
 }
+
 export function useOrgRole(): OrgRole | null {
     return useScope().scope.role;
 }

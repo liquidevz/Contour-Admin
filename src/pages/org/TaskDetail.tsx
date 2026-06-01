@@ -26,6 +26,7 @@ import {
     taskAddAssignee, taskRemoveAssignee, taskUpdateFields,
     taskSetDependency, taskRemoveDependency,
     checklistCreate, checklistItemCreate, checklistItemToggle,
+    taskCommentMention, labelList, taskSetLabels, logTime, type BoardLabel,
     type TaskCommentRow, type TaskActivityRow,
     type TaskAssigneeRow, type TaskDependencyRow, type TaskChecklistRow,
     type TaskStatusCategory, type TaskPriority,
@@ -86,6 +87,11 @@ export default function OrgTaskDetailPage() {
     const [newChecklist, setNewChecklist] = useState('');
     const [newChecklistItem, setNewChecklistItem] = useState<Record<string, string>>({});
 
+    const [orgLabels, setOrgLabels] = useState<BoardLabel[]>([]);
+    const [taskLabelIds, setTaskLabelIds] = useState<string[]>([]);
+    const [timeMin, setTimeMin] = useState('');
+    const [timeNote, setTimeNote] = useState('');
+
     const load = useCallback(async () => {
         if (!taskId) return;
         setLoading(true); setError(null);
@@ -96,12 +102,16 @@ export default function OrgTaskDetailPage() {
             setDescDraft(d.task.description ?? '');
 
             if (orgId) {
-                const [members, otherTasks] = await Promise.all([
+                const [members, otherTasks, labels, links] = await Promise.all([
                     orgListMembers(orgId),
                     supabase.from('tasks').select('id, title').eq('org_id', orgId).neq('id', taskId).limit(100),
+                    labelList(orgId).catch(() => [] as BoardLabel[]),
+                    supabase.from('task_label_links').select('label_id').eq('task_id', taskId),
                 ]);
                 setOrgMembers(members);
                 setAllOrgTasks(otherTasks.data ?? []);
+                setOrgLabels(labels);
+                setTaskLabelIds((links.data ?? []).map((r: any) => r.label_id));
             }
         } catch (e: any) {
             setError(e?.message ?? 'Failed to load task');
@@ -109,6 +119,17 @@ export default function OrgTaskDetailPage() {
     }, [taskId, orgId]);
 
     useEffect(() => { void load(); }, [load]);
+
+    // Realtime — refetch when comments or activity change on this task.
+    useEffect(() => {
+        if (!taskId) return;
+        const ch = supabase
+            .channel(`task:${taskId}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'task_comments', filter: `task_id=eq.${taskId}` }, () => { void load(); })
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'task_activity', filter: `task_id=eq.${taskId}` }, () => { void load(); })
+            .subscribe();
+        return () => { void supabase.removeChannel(ch); };
+    }, [taskId, load]);
 
     const saveTitle = async () => {
         if (!taskId || !data || titleDraft.trim() === (data.task.title ?? '')) return;
@@ -157,8 +178,12 @@ export default function OrgTaskDetailPage() {
     const postComment = async () => {
         if (!taskId || newComment.trim().length === 0) return;
         setPostingComment(true);
-        try { await taskAddComment(taskId, newComment.trim()); setNewComment(''); await load(); }
-        finally { setPostingComment(false); }
+        try {
+            const ids = resolveMentions(newComment, orgMembers);
+            if (ids.length > 0) await taskCommentMention(taskId, newComment.trim(), ids);
+            else await taskAddComment(taskId, newComment.trim());
+            setNewComment(''); await load();
+        } finally { setPostingComment(false); }
     };
 
     const toggleResolved = async (c: TaskCommentRow) => {
@@ -413,8 +438,8 @@ export default function OrgTaskDetailPage() {
                                         </span>
                                         {c.resolved && <span style={{ fontSize: 10, color: '#22c55e' }}>resolved</span>}
                                     </div>
-                                    <div style={{ fontSize: 13, lineHeight: 1.45, marginTop: 4, whiteSpace: 'pre-wrap' }}>
-                                        {c.body}
+                                    <div style={{ fontSize: 13, lineHeight: 1.45, marginTop: 4 }}>
+                                        <Markdown text={c.body} members={orgMembers} />
                                     </div>
                                 </div>
                                 <button className="btn btn-ghost btn-sm" onClick={() => toggleResolved(c)} title={c.resolved ? 'Re-open' : 'Resolve'}>
@@ -444,7 +469,7 @@ export default function OrgTaskDetailPage() {
                             </button>
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--text-muted,#8a8a96)', marginTop: 4 }}>
-                            Tip: ⌘/Ctrl + Enter to post
+                            Tip: ⌘/Ctrl + Enter to post · <strong>@name</strong> to mention · **bold**, *italic*, `code`, - lists
                         </div>
                     </section>
                 </div>
@@ -538,6 +563,50 @@ export default function OrgTaskDetailPage() {
                         </div>
                     </section>
 
+                    {/* Labels */}
+                    {orgLabels.length > 0 && (
+                        <section style={panel}>
+                            <h3 style={panelTitle}>Labels</h3>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                {orgLabels.map((l) => {
+                                    const on = taskLabelIds.includes(l.id);
+                                    const c = l.color ?? 'var(--accent,#7c5cff)';
+                                    return (
+                                        <button key={l.id} onClick={async () => {
+                                            const next = on ? taskLabelIds.filter((x) => x !== l.id) : [...taskLabelIds, l.id];
+                                            setTaskLabelIds(next);
+                                            try { await taskSetLabels(taskId!, next); }
+                                            catch { setTaskLabelIds(taskLabelIds); }
+                                        }} style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 999, cursor: 'pointer',
+                                            fontSize: 11, fontWeight: 600, background: on ? c + '22' : 'transparent',
+                                            border: `1px solid ${on ? c : 'var(--border-subtle,#2a2a35)'}`, color: on ? c : 'var(--text-muted,#8a8a96)',
+                                        }}>
+                                            <span style={{ width: 7, height: 7, borderRadius: 4, background: c }} /> {l.name}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </section>
+                    )}
+
+                    {/* Time tracking */}
+                    <section style={panel}>
+                        <h3 style={panelTitle}>Time logged</h3>
+                        <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>{fmtMinutes((data.task as any).time_logged ?? 0)}</div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                            <input type="number" min={0} value={timeMin} onChange={(e) => setTimeMin(e.target.value)} placeholder="Min" className="input-field" style={{ width: 64, fontSize: 12 }} />
+                            <input type="text" value={timeNote} onChange={(e) => setTimeNote(e.target.value)} placeholder="Note" className="input-field" style={{ flex: 1, fontSize: 12 }} />
+                            <button className="btn btn-ghost btn-sm" disabled={!timeMin || Number(timeMin) <= 0}
+                                onClick={async () => {
+                                    try { await logTime(taskId!, Number(timeMin), timeNote.trim() || undefined); setTimeMin(''); setTimeNote(''); await load(); }
+                                    catch (e: any) { showToast(e?.message ?? 'Could not log time', 'error'); }
+                                }}>
+                                <Plus size={12} />
+                            </button>
+                        </div>
+                    </section>
+
                     {/* Watchers */}
                     <section style={panel}>
                         <h3 style={panelTitle}><Eye size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> Watchers</h3>
@@ -608,3 +677,74 @@ const memberRow: React.CSSProperties = {
     display: 'flex', alignItems: 'center', gap: 8,
     padding: '6px 0', borderBottom: '1px solid var(--border-subtle,#2a2a35)',
 };
+
+function fmtMinutes(mins: number): string {
+    if (!mins || mins <= 0) return 'No time logged';
+    const h = Math.floor(mins / 60); const m = Math.round(mins % 60);
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+/* ── lightweight markdown + mentions (no dependency) ── */
+
+// Resolve "@name" tokens in a comment to org member user ids.
+function resolveMentions(text: string, members: OrgMemberRow[]): string[] {
+    const tokens = (text.match(/@([\w.\-]+)/g) ?? []).map((t) => t.slice(1).toLowerCase());
+    if (tokens.length === 0) return [];
+    const ids = new Set<string>();
+    for (const tok of tokens) {
+        for (const m of members) {
+            const name = (m.display_name ?? '').toLowerCase();
+            const first = name.split(' ')[0];
+            const emailUser = (m.email ?? '').split('@')[0].toLowerCase();
+            if (tok === first || tok === emailUser || name.replace(/\s+/g, '') === tok) { ids.add(m.user_id); break; }
+        }
+    }
+    return [...ids];
+}
+
+// Minimal, safe inline markdown: bold, italic, code, links, @mentions, - lists.
+function Markdown({ text, members }: { text: string; members: OrgMemberRow[] }) {
+    const names = new Set(members.map((m) => (m.display_name ?? '').split(' ')[0].toLowerCase()).filter(Boolean));
+    const lines = text.split('\n');
+    return (
+        <div style={{ whiteSpace: 'pre-wrap' }}>
+            {lines.map((line, li) => {
+                const bullet = /^\s*[-*]\s+/.test(line);
+                const content = bullet ? line.replace(/^\s*[-*]\s+/, '') : line;
+                return (
+                    <div key={li} style={bullet ? { paddingLeft: 14, position: 'relative' } : undefined}>
+                        {bullet && <span style={{ position: 'absolute', left: 2 }}>•</span>}
+                        {renderInline(content, names)}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+function renderInline(text: string, mentionNames: Set<string>): React.ReactNode[] {
+    // Order matters: code first (so we don't format inside it), then links, bold, italic, mentions.
+    const out: React.ReactNode[] = [];
+    const regex = /(`[^`]+`)|(\[[^\]]+\]\([^)]+\))|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(@[\w.\-]+)/g;
+    let last = 0; let m: RegExpExecArray | null; let key = 0;
+    while ((m = regex.exec(text)) !== null) {
+        if (m.index > last) out.push(text.slice(last, m.index));
+        const tok = m[0];
+        if (tok.startsWith('`')) {
+            out.push(<code key={key++} style={{ background: 'var(--bg-primary,#0a0a0f)', padding: '1px 5px', borderRadius: 4, fontSize: 12 }}>{tok.slice(1, -1)}</code>);
+        } else if (tok.startsWith('[')) {
+            const mm = /\[([^\]]+)\]\(([^)]+)\)/.exec(tok)!;
+            out.push(<a key={key++} href={mm[2]} target="_blank" rel="noreferrer" style={{ color: 'var(--accent,#7c5cff)' }}>{mm[1]}</a>);
+        } else if (tok.startsWith('**')) {
+            out.push(<strong key={key++}>{tok.slice(2, -2)}</strong>);
+        } else if (tok.startsWith('*')) {
+            out.push(<em key={key++}>{tok.slice(1, -1)}</em>);
+        } else if (tok.startsWith('@')) {
+            const known = mentionNames.has(tok.slice(1).toLowerCase());
+            out.push(<span key={key++} style={{ color: known ? 'var(--accent,#7c5cff)' : 'inherit', fontWeight: known ? 600 : 400 }}>{tok}</span>);
+        }
+        last = m.index + tok.length;
+    }
+    if (last < text.length) out.push(text.slice(last));
+    return out;
+}

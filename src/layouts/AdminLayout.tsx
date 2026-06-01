@@ -12,10 +12,13 @@ import {
   SlidersHorizontal, Command, Building2, Mail, Briefcase, Check,
   User as UserIcon, FolderKanban, Receipt, Globe,
 } from 'lucide-react';
-import CommandPalette, { useNavCommands } from '../components/ui/CommandPalette';
+import CommandPalette, { useNavCommands, type PaletteItem } from '../components/ui/CommandPalette';
+import { orgGlobalSearch } from '../lib/tasks';
+import { CircleDot } from 'lucide-react';
 import IdleTimeout from '../components/ui/IdleTimeout';
 import ImpersonationBanner from '../components/ui/ImpersonationBanner';
 import ToastHost from '../components/ui/Toast';
+import ThemeToggle from '../components/ui/ThemeToggle';
 
 /**
  * Sidebar sections for the Super-Admin (platform) scope — the existing
@@ -197,6 +200,30 @@ export default function AdminLayout() {
   const navCommands = useNavCommands(
     navSections.map(s => ({ section: s.label, items: s.items }))
   );
+
+  // Issue-key / project search for the palette (org scope only).
+  const paletteRemoteSearch = useMemo(() => {
+    const orgId = scope.orgId;
+    if (!orgId) return undefined;
+    return async (q: string): Promise<PaletteItem[]> => {
+      try {
+        const res = await orgGlobalSearch(orgId, q, 12);
+        const projects: PaletteItem[] = res.projects.map((p) => ({
+          id: `proj:${p.id}`, label: p.name, section: 'Projects',
+          icon: FolderKanban, action: () => navigate(`/org/projects/${p.id}`),
+        }));
+        const tasks: PaletteItem[] = res.tasks.map((t) => ({
+          id: `task:${t.id}`,
+          label: t.issue_key ? `${t.issue_key} · ${t.title}` : t.title,
+          section: 'Issues', icon: CircleDot,
+          action: () => t.project_id
+            ? navigate(`/org/projects/${t.project_id}/task/${t.id}`)
+            : navigate(`/org/projects`),
+        }));
+        return [...tasks, ...projects];
+      } catch { return []; }
+    };
+  }, [scope.orgId, navigate]);
   const paletteItems = useMemo(() => [
     ...navCommands,
     {
@@ -359,13 +386,16 @@ export default function AdminLayout() {
             <kbd>⌘K</kbd>
           </button>
 
+          <div className="top-bar-right" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <ThemeToggle />
+
           {/* ── Scope switcher ─────────────────────────────────
               Only render when the user actually has something to switch
               between: at least one org membership, OR they're a platform
               admin who also belongs to an org. A pure platform admin with
               no org memberships sees a static role badge instead. */}
           {(activeMemberships.length > 0 || (isPlatformAdmin && activeMemberships.length > 0)) ? (
-          <div style={{ position: 'relative', marginLeft: 'auto' }}>
+          <div style={{ position: 'relative' }}>
             <button
               type="button"
               onClick={() => setScopeMenuOpen((v) => !v)}
@@ -412,7 +442,14 @@ export default function AdminLayout() {
                       sub={role ?? 'platform'}
                       icon={<Shield size={14} />}
                       active={scope.type === 'platform'}
-                      onClick={() => { switchToPlatform(); navigate('/dashboard'); }}
+                      onClick={() => { 
+                        switchToPlatform(); 
+                        setScopeMenuOpen(false);
+                        // Navigate to platform dashboard
+                        if (location.pathname.startsWith('/org/')) {
+                          navigate('/dashboard');
+                        }
+                      }}
                     />
                   )}
 
@@ -421,7 +458,14 @@ export default function AdminLayout() {
                     sub="Your individual account"
                     icon={<UserIcon size={14} />}
                     active={scope.type === 'personal'}
-                    onClick={() => { switchToPersonal(); navigate('/dashboard'); }}
+                    onClick={() => { 
+                      switchToPersonal(); 
+                      setScopeMenuOpen(false);
+                      // Navigate to personal dashboard
+                      if (location.pathname.startsWith('/org/')) {
+                        navigate('/dashboard');
+                      }
+                    }}
                   />
 
                   {activeMemberships.length > 0 && (
@@ -436,7 +480,14 @@ export default function AdminLayout() {
                           sub={m.role}
                           icon={<Building2 size={14} />}
                           active={scope.type === 'org' && scope.orgId === m.org_id}
-                          onClick={() => { switchToOrg(m.org_id); navigate('/dashboard'); }}
+                          onClick={() => { 
+                            switchToOrg(m.org_id); 
+                            setScopeMenuOpen(false);
+                            // Navigate to org dashboard if not already on org route
+                            if (!location.pathname.startsWith('/org/')) {
+                              navigate('/org/dashboard');
+                            }
+                          }}
                         />
                       ))}
                     </div>
@@ -447,10 +498,9 @@ export default function AdminLayout() {
           </div>
           ) : (
             // No-orgs fallback: show the role badge so the topbar isn't empty.
-            <div className="top-bar-right" style={{ marginLeft: 'auto' }}>
-              <div className="role-badge">{role ?? 'no role'}</div>
-            </div>
+            <div className="role-badge">{role ?? 'no role'}</div>
           )}
+          </div>
         </header>
         <div className="page-content">
           <Outlet />
@@ -458,7 +508,7 @@ export default function AdminLayout() {
       </main>
 
       {/* Global primitives */}
-      <CommandPalette items={paletteItems} />
+      <CommandPalette items={paletteItems} remoteSearch={paletteRemoteSearch} />
       <IdleTimeout />
       <ToastHost />
     </div>

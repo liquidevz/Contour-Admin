@@ -17,6 +17,7 @@ import {
   LayoutDashboard, ArrowRight,
 } from 'lucide-react';
 import Page from '../components/ui/Page';
+import PlatformOrgHealth from '../components/PlatformOrgHealth';
 import MetricCard from '../components/ui/MetricCard';
 import EmptyState from '../components/ui/EmptyState';
 import Help from '../components/ui/Help';
@@ -81,6 +82,8 @@ export default function Dashboard() {
       icon={<LayoutDashboard size={20} />}
     >
       <LiveSignals />
+
+      <PlatformOrgHealth />
 
       <section>
         <SectionHeading

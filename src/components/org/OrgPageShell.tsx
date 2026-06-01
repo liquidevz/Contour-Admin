@@ -14,10 +14,11 @@
  *   </OrgPageShell>
  */
 
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import Page from '../ui/Page';
 import { useScope } from '../../context/ScopeContext';
 import { canManageMembers, canManageTeams, isAdminTier, type OrgRole } from '../../lib/org';
+import '../../org-glass.css';
 
 type RequireGate = 'orgMember' | 'managerTier' | 'adminTier' | 'owner';
 
@@ -68,9 +69,14 @@ export default function OrgPageShell({
         );
     }
 
+    const brand = (scope.membership as any)?.brand_color || undefined;
+    const brandStyle = (brand ? { ['--org-brand' as any]: brand } : undefined) as CSSProperties | undefined;
+
     return (
         <Page title={title} subtitle={subtitle} icon={icon} actions={actions} crumbs={crumbs}>
-            {children}
+            <div className="org-glass-root" style={brandStyle}>
+                {children}
+            </div>
         </Page>
     );
 }
