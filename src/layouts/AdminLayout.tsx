@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useScope } from '../context/ScopeContext';
 import { supabase } from '../lib/supabase';
+import { canAccessRoute, roleLabel } from '../lib/roles';
 import {
   LayoutDashboard, Users, UserCheck, ShoppingBag, HandHeart,
   Flag, MessageSquare, Zap, ToggleLeft, Tag, Layers, BarChart3,
@@ -14,7 +15,7 @@ import {
 } from 'lucide-react';
 import CommandPalette, { useNavCommands, type PaletteItem } from '../components/ui/CommandPalette';
 import { orgGlobalSearch } from '../lib/tasks';
-import { CircleDot } from 'lucide-react';
+import { CircleDot, Ticket } from 'lucide-react';
 import IdleTimeout from '../components/ui/IdleTimeout';
 import ImpersonationBanner from '../components/ui/ImpersonationBanner';
 import ToastHost from '../components/ui/Toast';
@@ -134,6 +135,7 @@ function buildOrgNavSections(role: 'owner' | 'admin' | 'manager' | 'member' | 'g
 
   // Work
   const workItems: Array<{ to: string; icon: any; label: string }> = [];
+  workItems.push({ to: '/org/tickets', icon: Ticket, label: 'Tickets' }); // every member can file/triage
   if (isManagerOrUp) workItems.push({ to: '/org/projects', icon: FolderKanban, label: 'Projects' });
   if (isAdminTier)   workItems.push({ to: '/org/approvals', icon: Receipt, label: 'Approvals' });
   if (workItems.length) sections.push({ label: 'Work', items: workItems });
@@ -192,10 +194,16 @@ export default function AdminLayout() {
 
   // Pick the right nav based on scope.
   const navSections = useMemo(() => {
-    if (scope.type === 'platform') return platformNavSections;
+    if (scope.type === 'platform') {
+      // Gate each platform nav item by the viewer's platform role so an
+      // analyst/support/moderator only sees what they can act on.
+      return platformNavSections
+        .map((s) => ({ ...s, items: s.items.filter((it) => canAccessRoute(role, it.to)) }))
+        .filter((s) => s.items.length > 0);
+    }
     if (scope.type === 'org')      return buildOrgNavSections(scope.role);
     return personalNavSections;
-  }, [scope.type, scope.role]);
+  }, [scope.type, scope.role, role]);
 
   const navCommands = useNavCommands(
     navSections.map(s => ({ section: s.label, items: s.items }))
@@ -288,7 +296,7 @@ export default function AdminLayout() {
     : scope.type === 'org'    ? (scope.membership?.org_name ?? 'Workspace')
     : 'Personal';
   const scopeRoleLabel =
-    scope.type === 'platform' ? (role ?? 'platform')
+    scope.type === 'platform' ? roleLabel(role)
     : scope.type === 'org'    ? (scope.role ?? '')
     : 'self';
 

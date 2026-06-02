@@ -168,6 +168,18 @@ export default function OrgTaskDetailPage() {
         finally { setSavingField(null); }
     };
 
+    const changeReminder = async (val: string) => {
+        if (!taskId) return;
+        setSavingField('reminder');
+        try {
+            await taskUpdateFields(taskId, {
+                reminder_at: val ? new Date(val).toISOString() : null,
+                reminder_enabled: !!val,
+            });
+            await load();
+        } finally { setSavingField(null); }
+    };
+
     const changePrimaryAssignee = async (userId: string) => {
         if (!taskId) return;
         setSavingField('assignee');
@@ -510,6 +522,17 @@ export default function OrgTaskDetailPage() {
                                 type="date"
                                 value={data.task.due_date ? new Date(data.task.due_date).toISOString().slice(0, 10) : ''}
                                 onChange={(e) => changeDueDate(e.target.value)}
+                                className="input-field"
+                                style={{ flex: 1, fontSize: 13 }}
+                            />
+                        </div>
+
+                        <div style={metaRow}>
+                            <span style={metaLabel}>Reminder</span>
+                            <input
+                                type="datetime-local"
+                                value={data.task.reminder_at ? new Date(data.task.reminder_at).toISOString().slice(0, 16) : ''}
+                                onChange={(e) => changeReminder(e.target.value)}
                                 className="input-field"
                                 style={{ flex: 1, fontSize: 13 }}
                             />

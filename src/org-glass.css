@@ -53,6 +53,24 @@
   box-shadow: 0 16px 40px -14px rgba(0, 0, 0, 0.6);
 }
 
+/* Board cards — solid-translucent (no blur, to avoid blur-over-blur + keep
+   a long board scrolling at 60fps). Sits inside a frosted column. */
+.org-glass-root .board-card {
+  background: color-mix(in srgb, var(--bg-primary, #0a0a0f) 78%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 7%, transparent);
+  box-shadow: 0 2px 8px -4px rgba(0, 0, 0, 0.4);
+  transition: transform 0.14s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.14s ease, box-shadow 0.14s ease;
+}
+.org-glass-root .board-card:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--org-brand) 45%, transparent);
+  box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.5);
+}
+:root[data-theme='light'] .org-glass-root .board-card {
+  background: color-mix(in srgb, #ffffff 82%, transparent);
+  border-color: color-mix(in srgb, #0f172a 8%, transparent);
+}
+
 /* Hero card variant — stronger brand glow ring. */
 .org-glass-root .glass-card--brand {
   border-color: color-mix(in srgb, var(--org-brand) 40%, transparent);

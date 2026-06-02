@@ -1,33 +1,49 @@
 /**
- * RoleGate — show children only if the current user has one of the allowed roles.
+ * RoleGate — show children only if the current user satisfies a role or
+ * capability requirement. Backed by the canonical model in lib/roles.ts.
  *
- * When the user lacks the role, by default the children are simply hidden.
- * Pass `fallback` to show a "view-only" placeholder, or `mode="disable"` to
- * keep the children visible but pointer-event-none + opacity-40 (good for
- * showing a control exists but the user can't act on it).
+ *   <RoleGate permission="users.manage">…</RoleGate>   // preferred: gate by capability
+ *   <RoleGate role={['admin','superadmin']}>…</RoleGate> // or by explicit role(s)
+ *
+ * When the user lacks access the children are hidden by default. Pass
+ * `fallback` for a "view-only" placeholder, or `mode="disable"` to keep the
+ * control visible but pointer-event-none + grayed (shows it exists but is
+ * locked). UI gating only — the server still enforces via RLS/RPCs.
  */
 
 import type { ReactNode } from 'react';
 import { useAuth } from '../../context/AuthContext';
-
-type Role = 'superadmin' | 'admin' | 'analyst';
+import { can, type AdminPermission, type AdminRole } from '../../lib/roles';
 
 interface RoleGateProps {
-    role:      Role | Role[];                        // Allowed role(s).
-    children:  ReactNode;
-    fallback?: ReactNode;
-    mode?:     'hide' | 'disable';                   // 'hide' (default) removes from DOM; 'disable' grays out and disables clicks.
+    /** Gate by explicit role(s). */
+    role?:       AdminRole | AdminRole[];
+    /** Gate by capability (preferred — survives role re-tiering). */
+    permission?: AdminPermission;
+    children:    ReactNode;
+    fallback?:   ReactNode;
+    mode?:       'hide' | 'disable';
 }
 
-export default function RoleGate({ role, children, fallback = null, mode = 'hide' }: RoleGateProps) {
+export default function RoleGate({ role, permission, children, fallback = null, mode = 'hide' }: RoleGateProps) {
     const { role: actual } = useAuth();
-    const allowed = Array.isArray(role) ? role : [role];
-    const ok = !!actual && allowed.includes(actual as Role);
+
+    let ok = false;
+    if (permission) {
+        ok = can(actual, permission);
+    } else if (role) {
+        const allowed = Array.isArray(role) ? role : [role];
+        ok = !!actual && allowed.includes(actual as AdminRole);
+    }
 
     if (ok) return <>{children}</>;
+
     if (mode === 'disable') {
+        const reqLabel = permission
+            ?? (Array.isArray(role) ? role.join(', ') : role)
+            ?? 'elevated role';
         return (
-            <span className="role-gate-disabled" aria-disabled="true" title={`Requires: ${allowed.join(', ')}`}>
+            <span className="role-gate-disabled" aria-disabled="true" title={`Requires: ${reqLabel}`}>
                 {children}
             </span>
         );

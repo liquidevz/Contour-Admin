@@ -70,6 +70,8 @@ export interface TaskRow {
     estimate_points: number | null;
     estimate_hours: number | null;
     visibility: string;
+    reminder_at: string | null;
+    reminder_enabled: boolean | null;
     created_at: string;
     updated_at: string;
 }
@@ -139,6 +141,19 @@ export async function projectArchive(projectId: string, archive = true): Promise
 
 export async function taskListForProject(projectId: string): Promise<TaskRow[]> {
     const { data, error } = await supabase.rpc('task_list_for_project', { p_project_id: projectId });
+    if (error) throw error;
+    return (data ?? []) as TaskRow[];
+}
+
+/** Tickets = incident-type tasks for the org (support / ops intake queue). */
+export async function ticketList(orgId: string): Promise<TaskRow[]> {
+    const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('org_id', orgId)
+        .eq('type', 'incident')
+        .order('created_at', { ascending: false })
+        .limit(200);
     if (error) throw error;
     return (data ?? []) as TaskRow[];
 }
@@ -403,6 +418,8 @@ export async function taskUpdateFields(taskId: string, fields: Partial<{
     estimate_points: number | null;
     estimate_hours: number | null;
     visibility: 'private' | 'team' | 'org' | 'public';
+    reminder_at: string | null;
+    reminder_enabled: boolean;
 }>) {
     const { error } = await supabase.from('tasks').update(fields).eq('id', taskId);
     if (error) throw error;

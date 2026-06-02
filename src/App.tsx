@@ -49,6 +49,7 @@ import OrgAudit from './pages/org/Audit';
 import OrgProjects from './pages/org/Projects';
 import OrgProjectDetail from './pages/org/ProjectDetail';
 import OrgTaskDetail from './pages/org/TaskDetail';
+import OrgTickets from './pages/org/Tickets';
 import OrgInbox from './pages/org/Inbox';
 import OrgApprovals from './pages/org/Approvals';
 import OrgDomains from './pages/org/Domains';
@@ -60,7 +61,8 @@ import OrgActivity from './pages/org/Activity';
 // ── Super-Admin org ops (P2) ───────────────────────────────────
 import Organisations from './pages/Organisations';
 
-const PLATFORM_ROLES = ['admin', 'superadmin', 'analyst', 'moderator', 'release_manager', 'support'];
+// Canonical platform-role helpers (single source of truth — lib/roles.ts).
+import { isPlatformRole } from './lib/roles';
 
 /**
  * Gate: admit anyone who is either a platform admin or a member of at
@@ -102,7 +104,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/change-password" replace />;
   }
 
-  const hasPlatformRole = !!role && PLATFORM_ROLES.includes(role);
+  const hasPlatformRole = isPlatformRole(role);
   const hasOrgMembership = memberships.some((m) => m.status === 'active');
 
   // Allow: platform admins (existing) OR any org member (new).
@@ -208,6 +210,7 @@ export default function App() {
                 <Route path="org/projects" element={<PageWrapper><OrgProjects /></PageWrapper>} />
                 <Route path="org/projects/:id" element={<PageWrapper><OrgProjectDetail /></PageWrapper>} />
                 <Route path="org/projects/:projectId/task/:taskId" element={<PageWrapper><OrgTaskDetail /></PageWrapper>} />
+                <Route path="org/tickets" element={<PageWrapper><OrgTickets /></PageWrapper>} />
                 <Route path="org/members" element={<PageWrapper><OrgMembers /></PageWrapper>} />
                 <Route path="org/members/:userId" element={<PageWrapper><OrgMemberDetail /></PageWrapper>} />
                 <Route path="org/invites" element={<PageWrapper><OrgInvites /></PageWrapper>} />

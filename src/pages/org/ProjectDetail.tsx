@@ -22,11 +22,11 @@ import {
 } from 'recharts';
 import { useScope } from '../../context/ScopeContext';
 import {
-    boardGet, taskMove, taskOrgCreate, sprintCreate, sprintStart, sprintComplete, burndownGet,
+    boardGet, taskMove, taskOrgCreate, taskUpdateFields, sprintCreate, sprintStart, sprintComplete, burndownGet,
     statusCreate, statusUpdate, statusReorder, statusDelete, projectVelocity,
     templateList, applyTemplate, projectSetConfig, orgModules,
     type BoardPayload, type BoardStatus, type BoardTask, type BoardSprint, type BurndownPoint,
-    type TaskStatusCategory, type VelocityRow, type ProjectTemplate, type OrgModule,
+    type TaskStatusCategory, type TaskPriority, type VelocityRow, type ProjectTemplate, type OrgModule,
 } from '../../lib/tasks';
 import { supabase } from '../../lib/supabase';
 import { OrgPageShell, Avatar, Modal, FormField } from '../../components/org';
@@ -72,6 +72,9 @@ export default function OrgProjectDetailPage() {
     const [newOpen, setNewOpen] = useState(false);
     const [nTitle, setNTitle] = useState('');
     const [nDesc, setNDesc] = useState('');
+    const [nPriority, setNPriority] = useState<TaskPriority>('medium');
+    const [nDue, setNDue] = useState('');
+    const [nReminder, setNReminder] = useState('');
     const [creating, setCreating] = useState(false);
 
     const [sprintOpen, setSprintOpen] = useState(false);
@@ -201,6 +204,32 @@ export default function OrgProjectDetailPage() {
         if (task) void moveToColumn(task, col);
     };
 
+    // Reorder within a column (or move + position) by dropping onto a specific card.
+    const handleCardDrop = async (targetTask: BoardTask, col: BoardStatus) => {
+        setDropCol(null);
+        const id = dragId; setDragId(null);
+        if (!id || id === targetTask.id) return;
+        const task = payload?.tasks.find((t) => t.id === id);
+        if (!task) return;
+        const colTasks = byColumn.get(col.id) ?? [];
+        const targetIdx = colTasks.findIndex((t) => t.id === targetTask.id);
+        const prev = colTasks[targetIdx - 1];
+        const targetPos = targetTask.position ?? targetIdx;
+        const prevPos = prev ? (prev.position ?? (targetIdx - 1)) : (targetPos - 1);
+        const newPos = (Number(prevPos) + Number(targetPos)) / 2;
+        // Done-gate when crossing into a completed column.
+        if (col.category === 'completed' && resolveColumnId(task) !== col.id) {
+            const req: string[] = (payload?.project as any)?.settings?.required_fields ?? [];
+            const missing = req.filter((f) =>
+                (f === 'due_date' && !task.due_date) || (f === 'estimate_points' && task.estimate_points == null) ||
+                (f === 'priority' && !task.priority) || (f === 'assignee' && !task.assignee_user_id));
+            if (missing.length > 0) { showToast(`Set ${missing.map((m) => m.replace('_', ' ')).join(', ')} before completing.`, 'error'); return; }
+        }
+        patchTask(task.id, { status_id: col.id, status_category: col.category, position: newPos });
+        try { await taskMove({ taskId: task.id, statusId: col.id, position: newPos }); }
+        catch (e: any) { showToast(e?.message ?? 'Move failed', 'error'); void load(); }
+    };
+
     /* ── create ── */
 
     const handleCreate = async () => {
@@ -208,9 +237,10 @@ export default function OrgProjectDetailPage() {
         setCreating(true);
         try {
             const sectionId = view.type === 'sprint' ? view.sprintId : undefined;
-            const id = await taskOrgCreate({ orgId, projectId, title: nTitle.trim(), description: nDesc.trim() || undefined, visibility: 'team' });
+            const id = await taskOrgCreate({ orgId, projectId, title: nTitle.trim(), description: nDesc.trim() || undefined, priority: nPriority, dueDate: nDue ? new Date(nDue).toISOString() : undefined, visibility: 'team' });
             if (defaultStatus) await taskMove({ taskId: id, statusId: defaultStatus.id, sectionId: sectionId ?? null, setSection: true });
-            setNewOpen(false); setNTitle(''); setNDesc('');
+            if (nReminder) await taskUpdateFields(id, { reminder_at: new Date(nReminder).toISOString(), reminder_enabled: true });
+            setNewOpen(false); setNTitle(''); setNDesc(''); setNPriority('medium'); setNDue(''); setNReminder('');
             await load();
         } catch (e: any) { showToast(e?.message ?? 'Could not create task', 'error'); }
         finally { setCreating(false); }
@@ -431,15 +461,14 @@ export default function OrgProjectDetailPage() {
                         const over = col.wip_limit != null && list.length > col.wip_limit;
                         const isDrop = dropCol === col.id;
                         return (
-                            <div key={col.id}
+                            <div key={col.id} className="glass-card"
                                 onDragOver={(e) => { e.preventDefault(); setDropCol(col.id); }}
                                 onDragLeave={() => setDropCol((c) => c === col.id ? null : c)}
                                 onDrop={() => handleDrop(col)}
                                 style={{
-                                    background: isDrop ? 'var(--bg-hover,#1c1c26)' : 'var(--bg-elevated,#14141c)',
-                                    border: `1px solid ${isDrop ? 'var(--accent,#7c5cff)' : 'var(--border-subtle,#2a2a35)'}`,
-                                    borderRadius: 8, display: 'flex', flexDirection: 'column', minHeight: 240,
-                                    transition: 'background .12s, border-color .12s',
+                                    ...(isDrop ? { background: 'var(--bg-hover,#1c1c26)' } : {}),
+                                    borderColor: isDrop ? 'var(--accent,#7c5cff)' : undefined,
+                                    borderRadius: 12, display: 'flex', flexDirection: 'column', minHeight: 240,
                                 }}>
                                 <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-subtle,#2a2a35)', display: 'flex', alignItems: 'center', gap: 8 }}>
                                     <span style={{ width: 8, height: 8, borderRadius: 4, background: col.color ?? 'var(--accent,#7c5cff)' }} />
@@ -453,14 +482,15 @@ export default function OrgProjectDetailPage() {
                                         const ty = task.type ? TYPE_ICON[task.type] : null;
                                         const overdue = task.due_date && !task.completed_at && new Date(task.due_date) < new Date();
                                         return (
-                                            <div key={task.id}
+                                            <div key={task.id} className="board-card"
                                                 draggable
                                                 onDragStart={() => setDragId(task.id)}
                                                 onDragEnd={() => { setDragId(null); setDropCol(null); }}
+                                                onDragOver={(e) => { e.preventDefault(); }}
+                                                onDrop={(e) => { e.stopPropagation(); void handleCardDrop(task, col); }}
                                                 onClick={() => navigate(`/org/projects/${projectId}/task/${task.id}`)}
                                                 style={{
-                                                    background: 'var(--bg-primary,#0a0a0f)', border: '1px solid var(--border-subtle,#2a2a35)',
-                                                    borderRadius: 6, padding: 10, cursor: 'grab', opacity: dragId === task.id ? 0.4 : 1,
+                                                    borderRadius: 8, padding: 10, cursor: 'grab', opacity: dragId === task.id ? 0.4 : 1,
                                                 }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                                                     {ty && <ty.Icon size={12} color={ty.color} />}
@@ -526,6 +556,17 @@ export default function OrgProjectDetailPage() {
                 </FormField>
                 <FormField label="Description (optional)">
                     <textarea value={nDesc} onChange={(e) => setNDesc(e.target.value)} rows={3} className="input-field" style={{ width: '100%' }} />
+                </FormField>
+                <FormField label="Priority">
+                    <select value={nPriority} onChange={(e) => setNPriority(e.target.value as TaskPriority)} className="input-field" style={{ width: '100%', textTransform: 'capitalize' }}>
+                        {(['urgent', 'high', 'medium', 'low'] as TaskPriority[]).map((p) => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                </FormField>
+                <FormField label="Due date (optional)">
+                    <input type="date" value={nDue} onChange={(e) => setNDue(e.target.value)} className="input-field" style={{ width: '100%' }} />
+                </FormField>
+                <FormField label="Reminder (optional)" hint="The assignee's app schedules a local alarm at this time.">
+                    <input type="datetime-local" value={nReminder} onChange={(e) => setNReminder(e.target.value)} className="input-field" style={{ width: '100%' }} />
                 </FormField>
                 <div style={{ fontSize: 12, color: 'var(--text-muted,#8a8a96)' }}>
                     Lands in <strong>{defaultStatus?.name ?? 'To Do'}</strong>{view.type === 'sprint' ? ` · ${currentSprint?.name}` : ' · Backlog'}.
