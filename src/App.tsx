@@ -50,6 +50,8 @@ import OrgProjects from './pages/org/Projects';
 import OrgProjectDetail from './pages/org/ProjectDetail';
 import OrgTaskDetail from './pages/org/TaskDetail';
 import OrgTickets from './pages/org/Tickets';
+import OrgAnnouncements from './pages/org/Announcements';
+import OrgDocuments from './pages/org/Documents';
 import OrgInbox from './pages/org/Inbox';
 import OrgApprovals from './pages/org/Approvals';
 import OrgDomains from './pages/org/Domains';
@@ -211,6 +213,8 @@ export default function App() {
                 <Route path="org/projects/:id" element={<PageWrapper><OrgProjectDetail /></PageWrapper>} />
                 <Route path="org/projects/:projectId/task/:taskId" element={<PageWrapper><OrgTaskDetail /></PageWrapper>} />
                 <Route path="org/tickets" element={<PageWrapper><OrgTickets /></PageWrapper>} />
+                <Route path="org/announcements" element={<PageWrapper><OrgAnnouncements /></PageWrapper>} />
+                <Route path="org/documents" element={<PageWrapper><OrgDocuments /></PageWrapper>} />
                 <Route path="org/members" element={<PageWrapper><OrgMembers /></PageWrapper>} />
                 <Route path="org/members/:userId" element={<PageWrapper><OrgMemberDetail /></PageWrapper>} />
                 <Route path="org/invites" element={<PageWrapper><OrgInvites /></PageWrapper>} />

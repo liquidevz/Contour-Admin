@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import CommandPalette, { useNavCommands, type PaletteItem } from '../components/ui/CommandPalette';
 import { orgGlobalSearch } from '../lib/tasks';
-import { CircleDot, Ticket } from 'lucide-react';
+import { CircleDot, Ticket, Megaphone, FolderOpen } from 'lucide-react';
 import IdleTimeout from '../components/ui/IdleTimeout';
 import ImpersonationBanner from '../components/ui/ImpersonationBanner';
 import ToastHost from '../components/ui/Toast';
@@ -129,6 +129,7 @@ function buildOrgNavSections(role: 'owner' | 'admin' | 'manager' | 'member' | 'g
       items: [
         { to: '/org/dashboard', icon: LayoutDashboard, label: 'Overview' },
         { to: '/org/inbox', icon: Bell, label: 'Inbox' },
+        { to: '/org/documents', icon: FolderOpen, label: 'Documents' }, // drive — every member
       ],
     },
   ];
@@ -137,6 +138,7 @@ function buildOrgNavSections(role: 'owner' | 'admin' | 'manager' | 'member' | 'g
   const workItems: Array<{ to: string; icon: any; label: string }> = [];
   workItems.push({ to: '/org/tickets', icon: Ticket, label: 'Tickets' }); // every member can file/triage
   if (isManagerOrUp) workItems.push({ to: '/org/projects', icon: FolderKanban, label: 'Projects' });
+  if (isManagerOrUp) workItems.push({ to: '/org/announcements', icon: Megaphone, label: 'Announcements' });
   if (isAdminTier)   workItems.push({ to: '/org/approvals', icon: Receipt, label: 'Approvals' });
   if (workItems.length) sections.push({ label: 'Work', items: workItems });
 
