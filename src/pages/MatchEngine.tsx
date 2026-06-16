@@ -184,13 +184,16 @@ function ConfigTab() {
   const [rows, setRows] = useState<ConfigRow[]>([]);
   const [dirty, setDirty] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [reverting, setReverting] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ text: string; kind: 'ok' | 'error' } | null>(null);
 
   async function load() {
     setLoading(true);
-    const { data } = await supabase.rpc('admin_get_algo_config');
+    setLoadErr(null);
+    const { data, error } = await supabase.rpc('admin_get_algo_config');
+    if (error) setLoadErr(error.message);
     setRows((data as ConfigRow[]) || []);
     setDirty({});
     setLoading(false);
@@ -206,14 +209,39 @@ function ConfigTab() {
   async function save() {
     setSaving(true);
     const updates = Object.entries(dirty);
+    const failed: { key: string; message: string }[] = [];
     for (const [key, value] of updates) {
-      await supabase.rpc('admin_set_algo_config', { p_key: key, p_value_num: value });
+      const { error } = await supabase.rpc('admin_set_algo_config', { p_key: key, p_value_num: value });
+      if (error) failed.push({ key, message: error.message });
     }
-    setToast(`Saved ${updates.length} param${updates.length === 1 ? '' : 's'}`);
-    setTimeout(() => setToast(null), 2400);
+    if (failed.length === 0) {
+      setToast({ text: `Saved ${updates.length} param${updates.length === 1 ? '' : 's'}`, kind: 'ok' });
+      setDirty({});
+    } else {
+      setToast({
+        text: `Saved ${updates.length - failed.length}/${updates.length} — failed: ${failed.map(f => `${f.key} (${f.message})`).join('; ')}`,
+        kind: 'error',
+      });
+      // Keep only the failed edits dirty so the admin can retry them.
+      setDirty(Object.fromEntries(updates.filter(([k]) => failed.some(f => f.key === k))));
+    }
+    setTimeout(() => setToast(null), failed.length ? 6000 : 2400);
     setSaving(false);
     void load();
   }
+
+  // Live plain-English readout of the reciprocity blend so admins can see
+  // the ratio they're creating: R = α·max(s) + β·min(s) − γ·|s_ij − s_ji|.
+  const blend = useMemo(() => {
+    const v = (k: string) => dirty[k] ?? Number(byKey[k]?.value_num ?? 0);
+    const a = v('alpha'), b = v('beta'), g = v('gamma');
+    const total = a + b;
+    return {
+      alpha: a, beta: b, gamma: g,
+      betterPct: total > 0 ? Math.round((a / total) * 100) : 0,
+      worsePct:  total > 0 ? Math.round((b / total) * 100) : 0,
+    };
+  }, [dirty, byKey]);
 
   async function revertDefaults() {
     if (!confirm('Reset every parameter to seed defaults? This includes feature_flag and cohort_pct, so the new engine will turn OFF for everyone.')) return;
@@ -221,10 +249,10 @@ function ConfigTab() {
     const { data, error } = await supabase.rpc('admin_reset_algo_config_defaults');
     setReverting(false);
     if (error) {
-      setToast(`Revert failed: ${error.message}`);
+      setToast({ text: `Revert failed: ${error.message}`, kind: 'error' });
     } else {
       const n = (data as any)?.rows_reset ?? 0;
-      setToast(`Reverted ${n} param${n === 1 ? '' : 's'} to defaults`);
+      setToast({ text: `Reverted ${n} param${n === 1 ? '' : 's'} to defaults`, kind: 'ok' });
     }
     setTimeout(() => setToast(null), 3000);
     void load();
@@ -236,15 +264,43 @@ function ConfigTab() {
 
   return (
     <div>
+      {loadErr && (
+        <div style={{ padding: 12, borderRadius: 6, marginBottom: 14,
+                      background: 'rgba(255,91,107,0.08)', border: '1px solid rgba(255,91,107,0.25)',
+                      color: '#ff5b6b', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <AlertCircle size={14} /> Couldn't load config: {loadErr}
+        </div>
+      )}
+
       {toast && (
         <div style={{
           padding: '10px 14px', borderRadius: 6, marginBottom: 14,
-          background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.3)',
-          color: '#14B8A6', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8,
+          background: toast.kind === 'ok' ? 'rgba(20,184,166,0.1)' : 'rgba(255,91,107,0.08)',
+          border: toast.kind === 'ok' ? '1px solid rgba(20,184,166,0.3)' : '1px solid rgba(255,91,107,0.25)',
+          color: toast.kind === 'ok' ? '#14B8A6' : '#ff5b6b',
+          fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8,
         }}>
-          <CheckCircle2 size={14} /> {toast}
+          {toast.kind === 'ok' ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />} {toast.text}
         </div>
       )}
+
+      {/* Live blend readout — what the current α/β/γ actually mean as a ratio */}
+      <div className="data-card" style={{ padding: 14, marginBottom: 14, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 18 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', minWidth: 180 }}>
+          Current reciprocity blend
+        </div>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', background: 'var(--bg-secondary, #11111a)' }}>
+            <div style={{ width: `${blend.betterPct}%`, background: '#14B8A6', transition: 'width 0.35s ease' }} />
+            <div style={{ width: `${blend.worsePct}%`, background: '#60a5fa', transition: 'width 0.35s ease' }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+            <span><span style={{ color: '#14B8A6' }}>■</span> Better direction {blend.betterPct}%</span>
+            <span><span style={{ color: '#60a5fa' }}>■</span> Worse direction {blend.worsePct}%</span>
+            <span>Lopsided penalty γ = {blend.gamma.toFixed(2)}</span>
+          </div>
+        </div>
+      </div>
 
       {PARAM_GROUPS.map(g => (
         <div key={g.group} className="data-card" style={{ padding: 18, marginBottom: 14 }}>
@@ -720,10 +776,10 @@ function ForensicsTab() {
         <div className="data-card" style={{ padding: 18 }}>
           <div className="data-card-title" style={{ marginBottom: 14, fontSize: 14 }}>Forensic breakdown</div>
           <div className="detail-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-            <Stat label="s_ij (A → B)"   value={result.s_ij?.toString() ?? '—'} />
-            <Stat label="s_ji (B → A)"   value={result.s_ji?.toString() ?? '—'} />
-            <Stat label="Asymmetry"      value={result.asymmetry?.toString() ?? '—'} />
-            <Stat label="Reciprocity R"  value={result.reciprocity?.toString() ?? '—'} accent />
+            <ScoreStat label="A fits B's needs" raw="s_ij" value={result.s_ij} />
+            <ScoreStat label="B fits A's needs" raw="s_ji" value={result.s_ji} />
+            <ScoreStat label="Balance gap" raw="asymmetry" value={result.asymmetry} invert />
+            <ScoreStat label="Overall match" raw="reciprocity R" value={result.reciprocity} accent />
           </div>
 
           <div style={{ marginTop: 18, padding: 12, background: 'var(--bg-secondary, #11111a)',
@@ -897,6 +953,48 @@ function RunLogTab() {
               </table>
             </div>
           )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Score stat with a human-readable percentage + strength label up front and
+ * the raw engine value as the secondary hint. Thresholds mirror the mobile
+ * app's getMatchStrength (≥75 strong / ≥55 relevant / ≥30 weak).
+ */
+function ScoreStat({ label, raw, value, accent, invert }: {
+  label: string; raw: string; value: number | null | undefined; accent?: boolean; invert?: boolean;
+}) {
+  const has = value != null && !Number.isNaN(Number(value));
+  const pct = has ? Math.round(Math.max(0, Math.min(1, Number(value))) * 100) : null;
+  const strength = pct == null ? null
+    : invert
+      ? (pct <= 10 ? 'Highly balanced' : pct <= 25 ? 'Balanced' : 'Lopsided')
+      : (pct >= 75 ? 'Strong' : pct >= 55 ? 'Relevant' : pct >= 30 ? 'Weak' : 'Minimal');
+  const barColor = invert
+    ? (pct != null && pct <= 25 ? '#14B8A6' : '#f59e0b')
+    : (pct != null && pct >= 55 ? '#14B8A6' : pct != null && pct >= 30 ? '#f59e0b' : '#6b7280');
+  return (
+    <div style={{
+      background: 'var(--bg-secondary, #11111a)',
+      border: '1px solid var(--border, #2a2a35)',
+      borderRadius: 8, padding: 14,
+    }}>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 20, fontWeight: 700, color: accent ? '#14B8A6' : 'var(--text-primary, #fff)' }}>
+        {pct != null ? `${pct}%` : '—'}
+        {strength && (
+          <span style={{ fontSize: 11, fontWeight: 600, marginLeft: 8, color: barColor }}>{strength}</span>
+        )}
+      </div>
+      <div style={{ height: 4, borderRadius: 2, background: 'var(--border, #2a2a35)', marginTop: 8, overflow: 'hidden' }}>
+        <div style={{ width: `${pct ?? 0}%`, height: '100%', background: barColor, transition: 'width 0.5s ease' }} />
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace', marginTop: 6 }}>
+        {raw} = {has ? Number(value).toFixed(4) : '—'}
       </div>
     </div>
   );

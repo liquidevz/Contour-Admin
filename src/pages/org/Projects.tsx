@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import { FolderKanban, Plus, Loader2, Archive } from 'lucide-react';
 import { useScope } from '../../context/ScopeContext';
 import { projectList, projectCreate, projectArchive, type ProjectRow } from '../../lib/tasks';
-import { canManageTeams } from '../../lib/org';
+import { canManageTeams, teamList, type TeamRow } from '../../lib/org';
 import { OrgPageShell, Modal, FormField } from '../../components/org';
 import { useOrgDialog, OrgConfirmModal, useOrgToast, OrgToastBanner } from '../../hooks/useOrgDialog';
 import SearchFilter from '../../components/ui/SearchFilter';
@@ -40,14 +40,22 @@ export default function OrgProjectsPage() {
     const [cSlug, setCSlug] = useState('');
     const [cSlugTouched, setCSlugTouched] = useState(false);
     const [cDesc, setCDesc] = useState('');
+    const [cTeamId, setCTeamId] = useState<string>('');
     const [creating, setCreating] = useState(false);
     const [createErr, setCreateErr] = useState<string | null>(null);
+    const [teams, setTeams] = useState<TeamRow[]>([]);
 
     const load = useCallback(async () => {
         if (!orgId) return;
         setLoading(true); setError(null);
-        try { setRows(await projectList(orgId)); }
-        catch (e: any) { setError(e?.message ?? 'Failed to load projects'); }
+        try {
+            const [p, t] = await Promise.all([
+                projectList(orgId),
+                teamList(orgId),
+            ]);
+            setRows(p);
+            setTeams(t);
+        } catch (e: any) { setError(e?.message ?? 'Failed to load projects'); }
         finally { setLoading(false); }
     }, [orgId]);
 
@@ -72,10 +80,11 @@ export default function OrgProjectsPage() {
                 orgId,
                 name: cName.trim(),
                 slug: effectiveSlug,
+                teamId: cTeamId || undefined,
                 description: cDesc.trim() || undefined,
             });
             setCreateOpen(false);
-            setCName(''); setCSlug(''); setCSlugTouched(false); setCDesc('');
+            setCName(''); setCSlug(''); setCSlugTouched(false); setCDesc(''); setCTeamId('');
             navigate(`/org/projects/${id}`);
         } catch (e: any) {
             setCreateErr(e?.message ?? 'Could not create project');
@@ -222,6 +231,21 @@ export default function OrgProjectsPage() {
                         onChange={(e) => { setCSlugTouched(true); setCSlug(slugify(e.target.value)); }}
                         className="input-field" style={{ width: '100%' }} />
                 </FormField>
+                {teams.length > 0 && (
+                    <FormField label="Team (Optional)">
+                        <select
+                            value={cTeamId}
+                            onChange={(e) => setCTeamId(e.target.value)}
+                            className="input-field"
+                            style={{ width: '100%' }}
+                        >
+                            <option value="">No Team (Org-wide)</option>
+                            {teams.map((t) => (
+                                <option key={t.id} value={t.id}>{t.name}</option>
+                            ))}
+                        </select>
+                    </FormField>
+                )}
                 <FormField label="Description (optional)">
                     <textarea value={cDesc} onChange={(e) => setCDesc(e.target.value)}
                         rows={3} className="input-field" style={{ width: '100%' }} />
